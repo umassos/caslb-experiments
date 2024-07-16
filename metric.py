@@ -38,21 +38,31 @@ class Tree:
 
 
 class MetricSpace:
-    def __init__(self):
+    def __init__(self, tau=1):
+        self.tau = tau
         self.df = pd.read_csv("latencies.csv", index_col=0)
         self.avg_distances, self.std_devs = self.get_distances(self.df)
-        self.simplex_names = self.generate_simplex_names()
+        self.simplex_names, _, _ = self.generate_simplex_distances()
 
         # get the tree embedding
         self.tree, self.weights, self.levels = self.frt_algorithm(names)
         self.weight_vector = self.get_weight_vector()
         self.unit_c_vector, self.name_vector = self.get_unit_c_vector()
+        self.phi_inv = self.phi_inverse(names, self.name_vector, self.simplex_names)
+        self.phi_mat = self.phi(names, self.name_vector, self.simplex_names)
+
+
+    # change this for subset
+    def get_names(self):
+        return names
     
 
     def refresh_tree(self):
         self.tree, self.weights, self.levels = self.frt_algorithm(names)
         self.weight_vector = self.get_weight_vector()
         self.unit_c_vector, self.name_vector = self.get_unit_c_vector()
+        self.phi_inv = self.phi_inverse(names, self.name_vector, self.simplex_names)
+        self.phi_mat = self.phi(names, self.name_vector, self.simplex_names)
 
     # loads data and computes the average and std dev of latencies between the AWS regions
     def get_distances(self, df):
@@ -94,16 +104,39 @@ class MetricSpace:
         return point_set
     
     # given distance and set of points, compute the diameter
-    def diameter(self, points):
+    def diameter(self, points=names):
         return max(self.distance(p1, p2) for p1 in points for p2 in points)
     
     # generate the names of states in the probability simplex
-    def generate_simplex_names(self):
+    def generate_simplex_distances(self):
         simplex_names = []
+        c_simplex = []
         for name in names:
             simplex_names.append(name + " ON")
+            c_simplex.append(1)
             simplex_names.append(name + " OFF")
-        return simplex_names
+            c_simplex.append(0)
+
+        # generate distances
+        simplex_distances = np.zeros((len(simplex_names), len(simplex_names)))
+        for from_region in simplex_names:
+            for to_region in simplex_names:
+                if from_region == to_region:
+                    continue
+                from_name = from_region.split(" ")[0]
+                to_name = to_region.split(" ")[0]
+                from_state = from_region.split(" ")[1]
+                to_state = to_region.split(" ")[1]
+                # if the states are different
+                if from_name != to_name:
+                    simplex_distances[simplex_names.index(from_region), simplex_names.index(to_region)] = self.distance(from_name, to_name)
+                # if the names are the same
+                else:
+                    simplex_distances[simplex_names.index(from_region), simplex_names.index(to_region)] = self.tau
+        return simplex_names, np.array(c_simplex), simplex_distances
+    
+    # generate a distance matrix between states in the probability simplex
+
 
     # generates a random tree embedding of the metric space according to the FRT algorithm
     def frt_algorithm(self, points):
@@ -116,7 +149,7 @@ class MetricSpace:
 
         # choose r_0
         radius_0 = np.random.uniform(0.5, 1)
-        radius_0 = 1
+        # radius_0 = 1
         radii = [radius_0 * 2**i for i in range(1, int(log_delta) + 1)]
 
         # set of nodes at each level (dict)
@@ -186,7 +219,6 @@ class MetricSpace:
         # iterate through the tree using breadth first search, each time we encounter a node, we add the weight of the preceding edge to the weight vector
         queue = [self.tree.root]
         level_queue = [self.levels]
-        tau = 1
         while queue:
             node = queue.pop(0)
             level = level_queue.pop(0)
@@ -194,12 +226,12 @@ class MetricSpace:
                 if len(node.children) == 1 and child.point == "OFF":
                     queue.append(child)
                     level_queue.append(level-1)
-                    weight_vector.append(tau)
+                    weight_vector.append(self.tau)
                 else:
                     queue.append(child)
                     level_queue.append(level-1)
                     weight_vector.append(self.weights[level-1])
-        return weight_vector
+        return np.array(weight_vector)
     
     # get the unit_c_vector for the tree and the name vector
     def get_unit_c_vector(self):
@@ -223,7 +255,38 @@ class MetricSpace:
                     if child.point == "OFF":
                         string = list(node.point)[0] + " OFF"
                     name_vector.append(string)
-        return c_vector, name_vector
+        return np.array(c_vector), name_vector
+    
+    # define a phi (inverse) matrix that maps regular vectors to simplex vectors
+    def phi_inverse(self, names, vector_names, simplex_names):
+        phi_inv_matrix = np.zeros((len(simplex_names), len(vector_names)))
+        for i, name in enumerate(names):
+            # at the simplex_names[name + " 0N"] row, we have one 1 at the name + " ON" column and one -1 at the name + " OFF" column
+            phi_inv_matrix[simplex_names.index(name + " ON"), vector_names.index(name)] = 1
+            phi_inv_matrix[simplex_names.index(name + " ON"), vector_names.index(name + " OFF")] = -1
+            # at the simplex_names[name + " OFF"] row, we have one 1 at the name + " OFF" column
+            phi_inv_matrix[simplex_names.index(name + " OFF"), vector_names.index(name + " OFF")] = 1
+        return phi_inv_matrix
+    
+    # define a phi matrix that maps simplex vectors to regular vectors
+    def phi(self, names, vector_names, simplex_names):
+        phi_matrix = np.zeros((len(vector_names), len(simplex_names)))
+        for i, name in enumerate(names):
+            # at the vector_names[name] row, we have one 1 at the simplex_names[name + " ON"] row, and one 1 at the simplex_names[name + " OFF"] row
+            phi_matrix[vector_names.index(name), simplex_names.index(name + " ON")] = 1
+            phi_matrix[vector_names.index(name), simplex_names.index(name + " OFF")] = 1
+            # at the vector_names[name + " OFF"] row, we have one 1 at the simplex_names[name + " OFF"] row
+            phi_matrix[vector_names.index(name + " OFF"), simplex_names.index(name + " OFF")] = 1
+            # at ANY OTHER row where the name is present, we have one 1 at the simplex_names[name + " ON"] row and one 1 at the simplex_names[name + " OFF"] row
+            for j, vector_name in enumerate(vector_names):
+                if j in [vector_names.index(name), vector_names.index(name + " OFF")]:
+                    continue
+                if name in vector_name:
+                    phi_matrix[j, simplex_names.index(name + " ON")] = 1
+                    phi_matrix[j, simplex_names.index(name + " OFF")] = 1
+        # at the vector_names["root"] row, we have all 1s
+        phi_matrix[0, :] = 1
+        return phi_matrix
     
     # convert ANY regular vector into a simplex vector (Phi inverse)
     def convert_to_simplex(self, vector):
@@ -251,6 +314,14 @@ class MetricSpace:
                     vector[i] += cumulative
         return vector
     
+    def get_start_state(self, name):
+        vector = np.zeros(len(self.name_vector))
+        simplex_vector = np.zeros(len(self.simplex_names))
+        simplex_vector[self.simplex_names.index(name + " OFF")] = 1
+        vector = self.convert_to_regular(simplex_vector)
+        return vector, simplex_vector
+
+        
     # pretty prints the current tree embedding to the console
     def print_tree(self):
         self.print_tree_helper(self.tree.root)

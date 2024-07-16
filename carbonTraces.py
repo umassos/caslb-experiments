@@ -63,4 +63,27 @@ def get_numpy(metric):
 
     return datetimes, X
 
+def get_simplex(simplex_names):
+    # get the "column names" of the vectors for the tree embedding in the metric space
+    name_vector = simplex_names.copy()
+
+    for i, name in enumerate(name_vector):
+        if "OFF" in name:
+            name_vector[i] = "none"
+        if "ON" in name:
+            name_vector[i] = name.replace(" ON", "")
+
+    # create a numpy matrix where each column is the corresponding carbon intensity trace for that region
+    X = np.zeros((len(dfs["us-east-1"]), len(name_vector)))
+
+    for i, name in enumerate(name_vector):
+        if name == "none":
+            continue
+        X[:, i] = dfs[name]["carbon_intensity_avg"].values
+
+    # save the datetimes to a separate pandas series
+    datetimes = dfs["us-east-1"]["datetime"]
+
+    return X
+
 

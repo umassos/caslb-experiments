@@ -1,11 +1,12 @@
 import random
 import math
 from scipy.optimize import linprog
-from scipy.optimize import minimize_scalar
+import scipy.optimize
 from scipy.optimize import minimize
 from scipy.optimize import LinearConstraint
 import scipy.integrate as integrate
 from scipy.special import lambertw
+# import ot
 import numpy as np
 import cvxpy as cp
 import pandas as pd
@@ -13,6 +14,7 @@ import pickle
 
 cimport numpy as np
 np.import_array()
+
 
 def generate_cost_function(L, U, std, dim):
     #cost_weight = np.random.uniform(L, U, dim)
@@ -28,25 +30,40 @@ def generate_cost_function(L, U, std, dim):
             cost_weight[i] = U
     return cost_weight
 
+
 # weighted_l1_norm computes the weighted L1 norm between two vectors.
-def weighted_l1_norm(vector1, vector2, weights, cvxpy=False):
+def weighted_l1_norm(vector1, vector2, phi, weights, cvxpy=False):
     if cvxpy:
-        weighted_diff = cp.multiply(cp.abs(vector1 - vector2), weights)
+        phi1 = phi @ vector1
+        phi2 = phi @ vector2
+        weighted_diff = cp.multiply(cp.abs(phi1 - phi2), weights)
         weighted_sum = cp.sum(weighted_diff)
     else:
-        assert vector1.shape == vector2.shape == weights.shape, "Input arrays must have the same shape."
-
-        weighted_diff = np.abs(vector1 - vector2) * weights
+        phi1 = phi @ vector1
+        phi2 = phi @ vector2
+        weighted_diff = np.abs(phi1 - phi2) * weights
         weighted_sum = np.sum(weighted_diff)
 
     return weighted_sum
 
-# objectiveFunction computes the minimization objective function for the OCS problem.
-# vars is the time series of decision variables (dim d x T)
-# vals is the time series of cost functions (dim d x T)
+
+# weighted l1 norm implementation for c function
+def weighted_l1_capacity(vector, weights, cvxpy=False):
+    if cvxpy:
+        weighted_abs = cp.multiply(cp.abs(vector), weights)
+        weighted_sum = cp.sum(weighted_abs)
+    else:
+        weighted_abs = np.abs(vector) * weights
+        weighted_sum = np.sum(weighted_abs)
+    return weighted_sum
+
+
+# objectiveFunctionTree computes the minimization objective function for CASLB (within the tree embedding)
+# vars is the time series of decision variables (dim V x T)
+# vals is the time series of cost functions (dim V x T)
 # w is the weight of the switching cost 
 # dim is the dimension
-def objectiveFunction(vars, vals, w, dim, cpy=False):
+def objectiveFunctionTree(vars, vals, w, scale, dim, start_state, phi, cpy=False):
     cost = 0.0
     vars = vars.reshape((len(vals), dim))
     n = vars.shape[0]
@@ -58,27 +75,115 @@ def objectiveFunction(vars, vals, w, dim, cpy=False):
             cost += np.dot(cost_func, vars[i])
         # add switching cost
         if i == 0:
-            cost += weighted_l1_norm(vars[i], np.zeros(dim), w, cvxpy=cpy)
+            cost += weighted_l1_norm(vars[i], start_state, phi, w, cvxpy=cpy) * scale
         elif i == n-1:
-            cost += weighted_l1_norm(vars[i], vars[i-1], w, cvxpy=cpy)
-            cost += weighted_l1_norm(np.zeros(dim), vars[i], w, cvxpy=cpy)
+            cost += weighted_l1_norm(vars[i], vars[i-1], phi, w, cvxpy=cpy) * scale
+            cost += weighted_l1_norm(start_state, vars[i], phi, w, cvxpy=cpy) * scale
         else:
-            cost += weighted_l1_norm(vars[i], vars[i-1], w, cvxpy=cpy)
+            cost += weighted_l1_norm(vars[i], vars[i-1], phi, w, cvxpy=cpy) * scale
     return cost
 
-def negativeObjectiveFunction(vars, vals, w, dim):
-    return -1 * objectiveFunction(vars, vals, w, dim)
+
+# objectiveFunctionSimplex computes the minimization objective for CASLB on the simplex, using the wasserstein1 distance
+def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, start_state, cpy=False):
+    cost = 0.0
+    n = vars.shape[0]
+    for (i, cost_func) in enumerate(vals):
+        if cpy:
+            cost += (cost_func @ vars[i])
+        else:
+            cost += np.dot(cost_func, vars[i])
+    for gamma in gammas:
+        cost += cp.trace(gamma.T*dist_matrix) * scale
+    return cost
+
+# objectiveFunctionDiscrete computes the minimization objective for CASLB 
+def objectiveFunctionDiscrete(vars, vals, dist_matrix, dim, start_state, tau, simplex_names, metric, cpy=False):
+    cost = 0.0
+    n = vars.shape[0]
+    for (i, cost_func) in enumerate(vals):
+        if cpy:
+            cost += (cost_func @ vars[i])
+        else:
+            cost += np.dot(cost_func, vars[i])
+        # add switching cost
+        # temporal - take the L1 norm of the difference between the two and multiply by tau
+        if i == 0:
+            cost += cp.norm(vars[i] - start_state, 1) * tau
+        elif i == n-1:
+            cost += cp.norm(vars[i] - vars[i-1], 1) * tau
+            cost += cp.norm(start_state - vars[i], 1) * tau
+        else:
+            cost += cp.norm(vars[i] - vars[i-1], 1) * tau
+        # spatial - if the location has changed, charge based on the distance
+        # get the first non-zero index of both vectors
+        if (vars[i].T @ vars[i]) != 0.5:
+            # get the index of the first non-zero element
+            loc1 = np.where(vars[i] == 1)[0][0]
+            loc2 = np.where(vars[i-1] == 1)[0][0]
+            if loc1 != loc2:
+                cost += dist_matrix[simplex_names[loc1], simplex_names[loc2]]
+    return cost
+    
+
+def negativeObjectiveSimplex(vars, vals, dist_matrix, dim, start_state, cpy=False):
+    return -1 * objectiveFunctionSimplex(vars, vals, dist_matrix, dim, start_state, cpy=cpy)
+
 
 
 # computing the optimal solution
-def optimalSolution(cost_functions, weights, d):
-    T = len(cost_functions)
+def optimalSolution(simplex_cost_functions, dist_matrix, scale, c_simplex, d, start_state):
+    T = len(simplex_cost_functions)
     # declare variables
+    x = cp.Variable((T, d))
+    gammas = [cp.Variable((d,d)) for _ in range(0, T+1)]
+    constraints = [0 <= x, x <= 1]
+    # add deadline constraint
+    c = np.array(c_simplex)
+    constraints += [cp.sum(x @ c.T) == 1]
+    # # add location constraint
+    # A = -1*np.ones((int(d/2), d))
+    # for j in range(0, d):
+    #     row = j//2
+    #     A[row][j] = 1
+    # for i in range(0, T):
+    #     constraints += [A @ x[i] == 1]
+    # add Wasserstein constraints
+    for i in range(T):
+        constraints += [cp.sum(x[i]) == 1]
+    for i in range(0, T+1):
+        constraints += [gammas[i] >= 0]
+        # each x[i] should sum to 1
+        if i == 0:
+            constraints += [gammas[i] @ np.ones(d) == start_state]
+        else:
+            constraints += [gammas[i] @ np.ones(d) == x[i-1]]
+        if i == T:
+            constraints += [gammas[i].T @ np.ones(d) == start_state]
+        else:
+            constraints += [gammas[i].T @ np.ones(d) == x[i]]
+    prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, start_state, cpy=True)), constraints)
+    prob.solve()
+    print("status:", prob.status)
+    print("optimal value", prob.value)
+    print("optimal var", x.value)
+    if prob.status == 'optimal':
+        return x.value, prob.value
+    else:
+        return x.value, 0.0
+
+
+# computing the adversarial solution using cvxpy instead
+def adversarialSolution(simplex_cost_functions, dist_matrix, c_simplex, d, start_state):
+    T = len(simplex_cost_functions)
+    # declare variables
+    # d here should be like 2n
     x = cp.Variable((T, d))
     constraints = [0 <= x, x <= 1]
     # add deadline constraint
-    constraints += [cp.sum(x) == 1]
-    prob = cp.Problem(cp.Minimize(objectiveFunction(x, cost_functions, weights, d, cpy=True)), constraints)
+    c = np.array(c_simplex)
+    constraints += [np.sum(x @ c.T) == 1]
+    prob = cp.Problem(cp.Minimize(negativeObjectiveSimplex(x, simplex_cost_functions, d, cpy=True)), constraints)
     prob.solve()
     # print("status:", prob.status)
     # print("optimal value", prob.value)
@@ -87,173 +192,126 @@ def optimalSolution(cost_functions, weights, d):
         return x.value, prob.value
     else:
         return x.value, 0.0
-    
 
-# cpdef tuple[np.ndarray, float] optimalSolution(list vals, np.ndarray w, int dim):
-#     cdef int n
-#     cdef list all_bounds, b, row, A
-#     cdef np.ndarray x0, xstar
+# def singleObjective(x, cost_func, previous, w, scale):
+#     return np.dot(cost_func, x) + weighted_l1_norm(x, previous, w) + weighted_l1_norm(np.zeros_like(x), x, w) * scale
+def singleObjective(x, cost_func, previous, phi, w, scale, start, cpy=True):
+    return (cost_func @ x) + weighted_l1_norm(x, previous, phi, w, cvxpy=cpy) * scale + weighted_l1_norm(start, x, phi, w, cvxpy=cpy) * scale
 
-#     n = len(vals)
-#     all_bounds = [(0,1) for _ in range(0, n*dim)]
-
-#     # declare inequality constraint matrix (2n + 1) x (2n + 1)
-#     # and the inequality constraint vector (2n + 1)
-#     A = []
-#     b = []
-#     # append first row (deadline constraint)
-#     row = [0 for i in range(0, n*dim)]
-#     for i in range(0, n*dim):
-#         row[i] = 1
-#     A.append(row)
-#     b.append(1)
-
-#     x0 = np.ones(n*dim)
-#     try:
-#         xstar = minimize(objectiveFunction, x0=x0, args=(vals, w, dim), bounds=all_bounds, constraints=LinearConstraint(A, lb=b, ub=b)).x
-#     except:
-#         print("something went wrong here")
-#         xstar = minimize(objectiveFunction, x0=np.zeros(n*dim), args=(vals, w, dim), bounds=all_bounds, constraints=LinearConstraint(A, lb=b, ub=b)).x
-#         return xstar, objectiveFunction(xstar, vals, w, dim)
-#     else:
-#         return xstar, objectiveFunction(xstar, vals, w, dim)
-
-
-# computing the adversarial solution
-cpdef tuple[np.ndarray, float] adversarialSolution(list vals, np.ndarray w, int dim):
-    cdef int n
-    cdef list all_bounds, b, row, A
-    cdef np.ndarray x0, xstar
-
-    n = len(vals)
-    all_bounds = [(0,1) for _ in range(0, n*dim)]
-
-    # declare inequality constraint matrix (2n + 1) x (2n + 1)
-    # and the inequality constraint vector (2n + 1)
-    A = []
-    b = []
-    # append first row (deadline constraint)
-    row = [0 for i in range(0, n*dim)]
-    for i in range(0, n*dim):
-        row[i] = 1
-    A.append(row)
-    b.append(1)
-
-    x0 = np.ones(n*dim)
-    try:
-        xstar = minimize(negativeObjectiveFunction, x0=x0, args=(vals, w, dim), bounds=all_bounds, constraints=LinearConstraint(A, lb=b, ub=b)).x
-    except:
-        print("something went wrong here")
-        xstar = minimize(negativeObjectiveFunction, x0=np.zeros(n*dim), args=(vals, w, dim), bounds=all_bounds, constraints=LinearConstraint(A, lb=b, ub=b)).x
-        return xstar, objectiveFunction(xstar, vals, w, dim)
-    else:
-        return xstar, objectiveFunction(xstar, vals, w, dim)
-
-
-
-cpdef float singleObjective(np.ndarray x, np.ndarray cost_func, np.ndarray previous, np.ndarray w):
-    return np.dot(cost_func, x) + weighted_l1_norm(x, previous, w) + weighted_l1_norm(np.zeros_like(x), x, w)
-
-# RORO algorithm implementation
+# PCM algorithm implementation
 # list of costs (values)    -- vals
 # switching cost weight     -- w
 # dimension                 -- dim
 # L                         -- L
 # U                         -- U
-cpdef tuple[list, float] RORO(list vals, np.ndarray w, int dim, float L, float U):
+# D                         -- diameter of the metric
+cpdef tuple[list, float] PCM(np.ndarray vals, np.ndarray w, float scale, np.ndarray c, np.ndarray phi, int dim, float L, float U, float D, float tau, np.ndarray start):
     cdef int i
     cdef list sol, all_bounds, b
-    cdef float cost, alpha, accepted
+    cdef float cost, eta, accepted
     cdef np.ndarray previous, A, x0, x_T, x_t, cost_func
 
     sol = []
     accepted = 0.0
 
-    # get value for beta
-    beta = np.max(w)
-
-    # get value for alpha
-    alpha = 1 / (1 - (2*beta/U) + lambertw( ( ( (2*beta/U) + (L/U) - 1 ) * math.exp(2*beta/U) ) / math.e ) )
+    # get value for eta
+    eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
     #simulate behavior of online algorithm using a for loop
     for (i, cost_func) in enumerate(vals):
         if accepted >= 1:
-            sol.append(np.zeros(dim))
+            sol.append(start)
             continue
         
         remainder = (1 - accepted)
         
         if i == len(vals) - 1: # must accept last cost function
             # get the best x_T which satisfies c(x_T) = remainder
-            all_bounds = [(0,1) for _ in range(0, dim)]
-
-            previous = np.zeros(dim)
-            if i != 0:
-                previous = sol[-1]
-            
-            A = np.ones(dim)
-            b = [remainder]
-            constraint = LinearConstraint(A, lb=b, ub=b)
-
-            x0 = np.zeros(dim)
-            x_T = minimize(singleObjective, x0=x0, args=(cost_func, previous, w), bounds=all_bounds, constraints=constraint).x
-
+            # use cvxpy
+            x = cp.Variable(dim)
+            constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x == remainder]
+            prob = cp.Problem(cp.Minimize(singleObjective(x, cost_func, previous, phi, w, scale, start)), constraints)
+            prob.solve(solver='ECOS')
+            x_T = x.value
             sol.append(x_T)
-            accepted += np.linalg.norm(x_T, ord=1)
+            accepted += c.T @ x_T
             break
 
         # solve for pseudo cost-defined solution
         previous = np.zeros(dim)
         if i != 0:
             previous = sol[i-1]
-        x_t = roroHelper(cost_func, accepted, alpha, L, U, beta, previous, w, dim)
+        x_t = pcmHelper(cost_func, accepted, eta, L, U, D, tau, previous, w, scale, c, phi, dim, start)
+        # normalize x_t
+        x_t = x_t / np.sum(x_t)
 
         # print(np.dot(cost_func,x_t) + weighted_l1_norm(x_t, previous, w))
-        # print(integrate.quad(thresholdFunc, 0, (0 + np.linalg.norm(x_t, ord=1)), args=(U,L,beta,alpha))[0])
+        # print(integrate.quad(thresholdFunc, 0, (0 + np.linalg.norm(x_t, ord=1)), args=(U,L,D,eta))[0])
 
-        accepted += np.linalg.norm(x_t, ord=1)
-        sol.append(x_t)
+        accepted += c.T @ x_t
+        sol.append(x_t) 
 
-    cost = objectiveFunction(np.array(sol), vals, w, dim)
+    cost = objectiveFunctionTree(np.array(sol), vals, w, scale, dim, start, phi)
     return sol, cost
 
-# helper for RORO algorithm
-cpdef np.ndarray roroHelper(np.ndarray cost_func, float accepted, float alpha, float L, float U, float beta, np.ndarray previous, np.ndarray w, int dim):
+# helper for PCM algorithm
+cpdef np.ndarray pcmHelper(np.ndarray cost_func, float accepted, float eta, float L, float U, float D, float tau, np.ndarray previous, np.ndarray w, float scale, np.ndarray c, np.ndarray phi, int dim, np.ndarray start):
     cdef np.ndarray target, x0, A
     cdef list all_bounds, b
     try:
-        x0 = np.zeros(dim)
-        all_bounds = [(0,1-accepted) for _ in range(0, dim)]
+        # initialize x0 
+        x0 = start
+        all_bounds = [(0,1) for _ in range(0, dim)]
         A = np.ones(dim)
         b = [1]
-        constraint = LinearConstraint(A, ub=b)
-        target = minimize(roroMinimization, x0=x0, args=(cost_func, alpha, U, L, beta, previous, accepted, w), bounds=all_bounds, constraints=constraint).x
+        constraint = LinearConstraint(A, lb=b)
+        # sumConstraint = {'type': 'eq', 'fun': lambda x: exactConstraint(x)}
+        target = minimize(pcmMinimization, x0=x0, args=(cost_func, eta, U, L, D, tau, previous, accepted, w, phi, scale, c), bounds=all_bounds, constraints=constraint, method='COBYQA').x
     except:
         print("something went wrong here w_j={}".format(accepted))
-        return np.zeros(dim)
+        # what went wrong
+        return start
     else:
         return target
+    # # use cvxpy to solve the problem
+    # x = cp.Variable(dim)
+    # constraints = [0 <= x, x <= 1, cp.sum(x) == 1]
+    # prob = cp.Problem(cp.Minimize(pcmMinimization(x, cost_func, eta, U, L, D, tau, previous, accepted, w, phi, scale, c)), constraints)
+    # prob.solve(solver=cp.ECOS)
+    # target = x.value
+    # if np.sum(target) > 1.01:
+    #     print("sum of target is greater than 1!  sum: {}".format(sum(target)))
+    return target
 
-cpdef float thresholdFunc(float w, float U, float L, float beta, float alpha):
-    return U - beta + (U / alpha - U + 2 * beta) * np.exp( w / alpha )
+cpdef float thresholdFunc(float w, float U, float L, float D, float tau, float eta):
+    return U - tau + (U / eta - U + D + tau) * np.exp( w / eta )
 
-cpdef float roroMinimization(np.ndarray x, np.ndarray cost_func, float alpha, float U, float L, float beta, np.ndarray previous, float accepted, np.ndarray w):
-    cdef float hit_cost, pseudo_cost
-    hit_cost = np.dot(cost_func, x)
-    pseudo_cost = integrate.quad(thresholdFunc, accepted, (accepted + np.linalg.norm(x, ord=1)), args=(U,L,beta,alpha))[0]
-    return hit_cost + weighted_l1_norm(x, previous, w) - pseudo_cost
+cpdef float thresholdAntiDeriv(float w, float U, float L, float D, float tau, float eta):
+    return U*w - tau*w + (tau * eta - U * eta + D*eta + U) * np.exp( w / eta )
+
+cpdef float pcmMinimization(np.ndarray x, np.ndarray cost_func, float eta, float U, float L, float D, float tau, np.ndarray previous, float accepted, np.ndarray w, np.ndarray phi, float scale, np.ndarray c):
+    cdef float hit_cost, pseudo_cost_a, pseudo_cost_b, next_accepted
+    hit_cost = (cost_func @ x)
+    next_accepted = (accepted + (c.T @ x))
+    pseudo_cost_a = thresholdAntiDeriv(accepted, U,L,D,tau,eta)
+    pseudo_cost_b = thresholdAntiDeriv(next_accepted, U,L,D,tau,eta)
+    #pseudo_cost = integrate.quad(thresholdFunc, accepted, (accepted + (c.T @ x)), args=(U,L,D,tau,eta))[0]
+    return hit_cost + (weighted_l1_norm(x, previous, phi, w, cvxpy=False) * scale) - (pseudo_cost_b - pseudo_cost_a)#pseudo_cost
+    #return hit_cost + (weighted_l1_norm(x, previous, phi, w, cvxpy=False) * scale) - pseudo_cost
+
 
 
 # "lazy agnostic" algorithm implementation
 # list of costs (values)    -- vals
 # switching cost weight     -- w
 # dimension                 -- dim
-cpdef tuple[list, float] lazyAgnostic(list vals, np.ndarray w, int dim):
+cpdef tuple[list, float] lazyAgnostic(list vals, np.ndarray w, np.ndarray c, int dim):
     cdef list sol
     cdef float cost
     cdef np.ndarray x_t
 
-    # choose a the minimum dimension at time 0
+    # choose the minimum dimension at time 0 with nonzero C
+    # FIX HERE
     min_dim = np.argmin(vals[0])
 
     # construct a solution which ramps up to 1/T on the selected dimension
@@ -263,7 +321,7 @@ cpdef tuple[list, float] lazyAgnostic(list vals, np.ndarray w, int dim):
         x_t[min_dim] = 1.0 / len(vals)
         sol.append(x_t)
 
-    cost = objectiveFunction(np.array(sol), vals, w, dim)
+    cost = objectiveFunctionSimplex(np.array(sol), vals, w, dim)
     return sol, cost
 
 
@@ -271,13 +329,14 @@ cpdef tuple[list, float] lazyAgnostic(list vals, np.ndarray w, int dim):
 # list of costs (values)    -- vals
 # switching cost weight     -- w
 # dimension                 -- dim
-cpdef tuple[list, float] agnostic(list vals, np.ndarray w, int dim):
+cpdef tuple[list, float] agnostic(list vals, np.ndarray w, np.ndarray c, int dim):
     cdef int i
     cdef list sol
     cdef float cost
     cdef np.ndarray x_t
 
-    # choose a the minimum dimension at time 0
+    # choose a the minimum dimension at time 0 with nonzero C
+    # FIX HERE
     min_dim = np.argmin(vals[0])
 
     # construct a solution which ramps up to 1 on the selected dimension at the first time step
@@ -288,7 +347,7 @@ cpdef tuple[list, float] agnostic(list vals, np.ndarray w, int dim):
             x_t[min_dim] = 1.0
         sol.append(x_t)
 
-    cost = objectiveFunction(np.array(sol), vals, w, dim)
+    cost = objectiveFunctionSimplex(np.array(sol), vals, w, dim)
     return sol, cost
 
 
@@ -296,13 +355,14 @@ cpdef tuple[list, float] agnostic(list vals, np.ndarray w, int dim):
 # list of costs (values)    -- vals
 # switching cost weight     -- w
 # dimension                 -- dim
-cpdef tuple[list, float] moveMinimizer(list vals, np.ndarray w, int dim):
+cpdef tuple[list, float] moveMinimizer(list vals, np.ndarray w, np.ndarray c, int dim):
     cdef int i
     cdef list sol
     cdef float cost
     cdef np.ndarray x_t
 
     # construct a solution which ramps up to 1/T on the minimum dimension at each step
+    # MIN DIM WITH NONZERO C fix here
     sol = []
     for val in vals:
         x_t = np.zeros(dim)
@@ -310,7 +370,7 @@ cpdef tuple[list, float] moveMinimizer(list vals, np.ndarray w, int dim):
         x_t[min_dim] = 1.0 / len(vals)
         sol.append(x_t)
 
-    cost = objectiveFunction(np.array(sol), vals, w, dim)
+    cost = objectiveFunctionSimplex(np.array(sol), vals, w, dim)
     return sol, cost
 
 
@@ -321,7 +381,7 @@ cpdef tuple[list, float] moveMinimizer(list vals, np.ndarray w, int dim):
 # dimension                 -- dim
 # L                         -- L
 # U                         -- U
-cpdef tuple[list, float] threshold(list vals, np.ndarray w, int dim, float L, float U):
+cpdef tuple[list, float] threshold(list vals, np.ndarray w, np.ndarray c, int dim, float L, float U):
     cdef list sol
     cdef float cost, accepted
     cdef np.ndarray x_t
@@ -350,7 +410,7 @@ cpdef tuple[list, float] threshold(list vals, np.ndarray w, int dim, float L, fl
                 x_t[j] = 1.0
                 break
         sol.append(x_t)
-        accepted += np.linalg.norm(x_t, ord=1)
+        accepted += weighted_l1_capacity(x_t, c)
 
-    cost = objectiveFunction(np.array(sol), vals, w, dim)
+    cost = objectiveFunctionSimplex(np.array(sol), vals, w, dim)
     return sol, cost
