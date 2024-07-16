@@ -21,11 +21,8 @@ warnings.filterwarnings("ignore")
 
 np.set_printoptions(suppress=True,precision=3)
 
-import pyximport
-pyximport.install(setup_args={"include_dirs":np.get_include()},
-                  reload_support=True)
 import implementations as f
-# import clip as c
+import clipper as c
 
 import matplotlib.style as style
 # style.use('tableau-colorblind10')
@@ -48,8 +45,11 @@ minutesPerGB = 1.72118
 carbonPerGB = (minutesPerGB / 60) * 700
 scale = setGB * (carbonPerGB / eastToWest)
 
+# job length (in hours)
+job_length = 2
+
 # get tau from cmd args
-tau = 1/scale #float(sys.argv[2]) / scale
+tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
 
 # load in metric space
 m = metric.MetricSpace(tau)
@@ -70,13 +70,10 @@ phi = m.phi(names, name_vector, simplex_names)
 
 # get the carbon trace
 datetimes, carbon_vector = carbonTraces.get_numpy(m)
-print(carbon_vector)
 
 # get the simplex carbon trace
 carbon_simplex = carbonTraces.get_simplex(simplex_names)
 
-# job length (in hours)
-job_length = 1
 
 # scale the c_vector and c_simplex by the job length
 c_vector = c_vector / job_length
@@ -116,38 +113,46 @@ for _ in tqdm(range(epochs)):
 
     # compute L and U based on cost functions
     costs = simplexSequence.flatten()
-    Lc = np.min(costs[np.nonzero(costs)])
-    Uc = np.max(costs)
+    Lc = np.min(costs[np.nonzero(costs)]) * job_length
+    Uc = np.max(costs) * job_length
+
+    if D > (Uc - Lc):
+        print("D too large!")
+        exit(1)
 
     # pick a random name out of the subset of names
-    start_state = random.choice(names)
-    start_state = "eu-north-1"
-    start_vector, start_simplex = m.get_start_state(start_state)
-    print(start_vector)
+    start_state = np.random.randint(0, len(names))
+    start_vector, start_simplex = m.get_start_state(names[start_state])
     
     #################################### solve for the optimal solution
 
-    # try to solve for the optimal solution using scipy minimization
+    # solve for the optimal solution using cvxpy
     sol, solCost = f.optimalSolution(simplexSequence, simplex_distances, scale, c_simplex, dim, start_simplex)
-    print(simplex_names)
-    # x_opt = sol.reshape((T, d))
-    # print(sol)
-    # print(x_opt)
-    # print(solCost)
+    # print(simplex_names)
+    x_opt = sol.reshape((T, dim))
+    print(x_opt)
+    print(solCost)
     # print(np.sum(x_opt))
-    # obtain some advice based on the optimal solution
-    # adv = sol.reshape((T, dim))
+
+    # solve for the advice using perturbed sequence
+    errordSequence = simplexSequence + np.random.uniform(-0.5, 0.5, simplexSequence.shape)*simplexSequence
+    # print(simplexSequence)
+    # print(errordSequence)
+    adv, adv_gamma_ots, advCost = f.optimalSolution(errordSequence, simplex_distances, scale, c_simplex, dim, start_simplex, alt_cost_functions=simplexSequence)
+    adv_ots = [gamma.value for gamma in adv_gamma_ots]
+    x_adv = adv.reshape((T, dim))
+    print(x_adv @ c_simplex.T)
+    print(x_adv)
+    print(advCost)
 
     #################################### get the online PCM solution
 
-    print("L: ", Lc, "U: ", Uc, "D: ", D, "tau: ", tau*scale)
-
     pcm, pcmCost = f.PCM(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, start_simplex)
+    print(pcm @ c_simplex.T)
     print(pcm)
     print(pcmCost)
     print(start_simplex)
     print(simplexSequence)
-
 
     #################################### get the online comparison solutions
 
@@ -162,8 +167,8 @@ for _ in tqdm(range(epochs)):
     # epsilon = 0.1
     # clip0, clip0Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
 
-    # epsilon = 2
-    # clip2, clip2Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
+    epsilon = 2
+    clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
 
 
     opts.append(sol)
@@ -184,6 +189,7 @@ for _ in tqdm(range(epochs)):
     # cost_clip0s.append(clip0Cost)
     # cost_clip2s.append(clip2Cost)
 
+print("L: ", Lc, "U: ", Uc, "D: ", D, "tau: ", tau*scale)
 
 # compute competitive ratios
 cost_opts = np.array(cost_opts)
@@ -224,9 +230,9 @@ plt.ylabel('cumulative probability')
 plt.xlabel("empirical competitive ratio")
 plt.tight_layout()
 plt.xlim(left=1)
-plt.show()
-# plt.savefig(str(sys.argv[1]) + "/robust_cdf_r{}_dim{}_s{}_d{}.png".format((U/L), d, D, std), facecolor='w', transparent=False, bbox_inches='tight')
-plt.clf()
+# plt.show()
+plt.savefig("cdf_GB{}_l{}.png".format(setGB, job_length), facecolor='w', transparent=False, bbox_inches='tight')
+# plt.clf()
 
 # print mean and 95th percentile of each competitive ratio
 print("Diameter: {}".format(D))
