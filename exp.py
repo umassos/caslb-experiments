@@ -76,7 +76,7 @@ print(carbon_vector)
 carbon_simplex = carbonTraces.get_simplex(simplex_names)
 
 # job length (in hours)
-job_length = 2
+job_length = 1
 
 # scale the c_vector and c_simplex by the job length
 c_vector = c_vector / job_length
@@ -121,6 +121,7 @@ for _ in tqdm(range(epochs)):
 
     # pick a random name out of the subset of names
     start_state = random.choice(names)
+    start_state = "eu-north-1"
     start_vector, start_simplex = m.get_start_state(start_state)
     print(start_vector)
     
@@ -128,8 +129,7 @@ for _ in tqdm(range(epochs)):
 
     # try to solve for the optimal solution using scipy minimization
     sol, solCost = f.optimalSolution(simplexSequence, simplex_distances, scale, c_simplex, dim, start_simplex)
-    print(start_simplex)
-    print(simplexSequence)
+    print(simplex_names)
     # x_opt = sol.reshape((T, d))
     # print(sol)
     # print(x_opt)
@@ -142,8 +142,7 @@ for _ in tqdm(range(epochs)):
 
     print("L: ", Lc, "U: ", Uc, "D: ", D, "tau: ", tau*scale)
 
-    pcm, pcmCost = f.PCM(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc/2, D, tau, start_simplex)
-    print(simplex_names)
+    pcm, pcmCost = f.PCM(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, start_simplex)
     print(pcm)
     print(pcmCost)
     print(start_simplex)

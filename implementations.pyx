@@ -215,7 +215,7 @@ cpdef tuple[list, float] PCM(np.ndarray vals, np.ndarray w, float scale, np.ndar
     accepted = 0.0
 
     # get value for eta
-    eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
+    eta = 1 / ( (U-D)/U + lambertw( ( (D+L-U+(2*tau*scale)) * math.exp((D-U)/U) )/U ) )
 
     #simulate behavior of online algorithm using a for loop
     for (i, cost_func) in enumerate(vals):
@@ -241,7 +241,7 @@ cpdef tuple[list, float] PCM(np.ndarray vals, np.ndarray w, float scale, np.ndar
         previous = np.zeros(dim)
         if i != 0:
             previous = sol[i-1]
-        x_t = pcmHelper(cost_func, accepted, eta, L, U, D, tau, previous, w, scale, c, phi, dim, start)
+        x_t = pcmHelper(cost_func, accepted, eta.real, L, U, D, tau, previous, w, scale, c, phi, dim, start)
         # normalize x_t
         x_t = x_t / np.sum(x_t)
 
@@ -256,47 +256,62 @@ cpdef tuple[list, float] PCM(np.ndarray vals, np.ndarray w, float scale, np.ndar
 
 # helper for PCM algorithm
 cpdef np.ndarray pcmHelper(np.ndarray cost_func, float accepted, float eta, float L, float U, float D, float tau, np.ndarray previous, np.ndarray w, float scale, np.ndarray c, np.ndarray phi, int dim, np.ndarray start):
-    cdef np.ndarray target, x0, A
-    cdef list all_bounds, b
-    try:
-        # initialize x0 
-        x0 = start
-        all_bounds = [(0,1) for _ in range(0, dim)]
-        A = np.ones(dim)
-        b = [1]
-        constraint = LinearConstraint(A, lb=b)
-        # sumConstraint = {'type': 'eq', 'fun': lambda x: exactConstraint(x)}
-        target = minimize(pcmMinimization, x0=x0, args=(cost_func, eta, U, L, D, tau, previous, accepted, w, phi, scale, c), bounds=all_bounds, constraints=constraint, method='COBYQA').x
-    except:
-        print("something went wrong here w_j={}".format(accepted))
-        # what went wrong
-        return start
-    else:
-        return target
-    # # use cvxpy to solve the problem
-    # x = cp.Variable(dim)
-    # constraints = [0 <= x, x <= 1, cp.sum(x) == 1]
-    # prob = cp.Problem(cp.Minimize(pcmMinimization(x, cost_func, eta, U, L, D, tau, previous, accepted, w, phi, scale, c)), constraints)
-    # prob.solve(solver=cp.ECOS)
-    # target = x.value
-    # if np.sum(target) > 1.01:
-    #     print("sum of target is greater than 1!  sum: {}".format(sum(target)))
+    # cdef np.ndarray target, x0, A
+    # cdef list all_bounds, b
+    # try:
+    #     # initialize x0 to put probability mass at the minimum hitting cost
+    #     index = np.argmin(cost_func[np.nonzero(cost_func)])
+    #     x0 = np.zeros(dim)
+    #     x0[index] = 1.0
+    #     # x0 = start
+    #     all_bounds = [(0,1) for _ in range(0, dim)]
+    #     A = np.ones(dim)
+    #     b = [1]
+    #     constraint = LinearConstraint(A, lb=b)
+    #     # sumConstraint = {'type': 'eq', 'fun': lambda x: exactConstraint(x)}
+    #     target = minimize(pcmMinimization, x0=x0, args=(cost_func, eta, U, L, D, tau, previous, accepted, w, phi, scale, c), bounds=all_bounds, constraints=constraint, method='COBYQA').x
+    # except:
+    #     print("something went wrong here w_j={}".format(accepted))
+    #     # what went wrong
+    #     return start
+    # else:
+    #     return target
+    # use cvxpy to solve the problem
+    x = cp.Variable(dim, pos=True)
+    constraints = [0 <= x, x <= 1, cp.sum(x) == 1]
+    prob = cp.Problem(cp.Minimize(pcmMinimization(x, cost_func, eta, U, L, D, tau, previous, accepted, w, phi, scale, c)), constraints)
+    prob.solve(solver=cp.CLARABEL)
+    target = x.value
+    if np.sum(target) > 1.01:
+        print("sum of target is greater than 1!  sum: {}".format(sum(target)))
     return target
 
 cpdef float thresholdFunc(float w, float U, float L, float D, float tau, float eta):
     return U - tau + (U / eta - U + D + tau) * np.exp( w / eta )
 
-cpdef float thresholdAntiDeriv(float w, float U, float L, float D, float tau, float eta):
-    return U*w - tau*w + (tau * eta - U * eta + D*eta + U) * np.exp( w / eta )
+# cpdef float thresholdAntiDeriv(float w, float U, float L, float D, float tau, float eta):
+#     return U*w - tau*w + (tau * eta - U * eta + D*eta + U) * np.exp( w / eta )
 
-cpdef float pcmMinimization(np.ndarray x, np.ndarray cost_func, float eta, float U, float L, float D, float tau, np.ndarray previous, float accepted, np.ndarray w, np.ndarray phi, float scale, np.ndarray c):
-    cdef float hit_cost, pseudo_cost_a, pseudo_cost_b, next_accepted
+# cpdef float pcmMinimization(np.ndarray x, np.ndarray cost_func, float eta, float U, float L, float D, float tau, np.ndarray previous, float accepted, np.ndarray w, np.ndarray phi, float scale, np.ndarray c):
+#     cdef float hit_cost, pseudo_cost_a, pseudo_cost_b, next_accepted
+#     hit_cost = (cost_func @ x)
+#     next_accepted = (accepted + (c.T @ x))
+#     pseudo_cost_a = thresholdAntiDeriv(accepted, U,L,D,tau,eta)
+#     pseudo_cost_b = thresholdAntiDeriv(next_accepted, U,L,D,tau,eta)
+#     #pseudo_cost = integrate.quad(thresholdFunc, accepted, (accepted + (c.T @ x)), args=(U,L,D,tau,eta))[0]
+#     return hit_cost + (weighted_l1_norm(x, previous, phi, w, cvxpy=False) * scale) - (pseudo_cost_b - pseudo_cost_a)#pseudo_cost
+#     #return hit_cost + (weighted_l1_norm(x, previous, phi, w, cvxpy=False) * scale) - pseudo_cost
+
+def thresholdAntiDeriv(w, U, L, D, tau, eta):
+    return U*w - tau*w + (tau * eta - U * eta + D*eta + U) * cp.exp( w / eta )
+
+def pcmMinimization(x, cost_func, eta, U, L, D, tau, previous, accepted, w, phi, scale, c):
     hit_cost = (cost_func @ x)
     next_accepted = (accepted + (c.T @ x))
     pseudo_cost_a = thresholdAntiDeriv(accepted, U,L,D,tau,eta)
     pseudo_cost_b = thresholdAntiDeriv(next_accepted, U,L,D,tau,eta)
     #pseudo_cost = integrate.quad(thresholdFunc, accepted, (accepted + (c.T @ x)), args=(U,L,D,tau,eta))[0]
-    return hit_cost + (weighted_l1_norm(x, previous, phi, w, cvxpy=False) * scale) - (pseudo_cost_b - pseudo_cost_a)#pseudo_cost
+    return hit_cost + (weighted_l1_norm(x, previous, phi, w, cvxpy=True) * scale) - (pseudo_cost_b - pseudo_cost_a)#pseudo_cost
     #return hit_cost + (weighted_l1_norm(x, previous, phi, w, cvxpy=False) * scale) - pseudo_cost
 
 
