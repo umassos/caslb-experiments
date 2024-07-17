@@ -9,6 +9,7 @@ from scipy.optimize import newton
 import scipy.integrate as integrate
 from scipy.special import lambertw
 import sys
+import ot
 import numpy as np
 import cvxpy as cp
 import pandas as pd
@@ -42,68 +43,75 @@ def weighted_l1_capacity(vector, weights, cvxpy=False):
         weighted_sum = np.sum(weighted_abs)
     return weighted_sum
 
-# objectiveFunctionTree computes the minimization objective function for CASLB (within the tree embedding)
-# vars is the time series of decision variables (dim V x T)
-# vals is the time series of cost functions (dim V x T)
-# w is the weight of the switching cost 
-# dim is the dimension
+
+#objectiveFunctionSimplex computes the minimization objective for CASLB on the simplex, using the wasserstein1 distance
 # @jit
-def objectiveFunctionTree(vars, vals, w, scale, dim, start_state, phi, cpy=False):
+def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=False):
     cost = 0.0
-    vars = vars.reshape((len(vals), dim))
-    n = vars.shape[0]
-    # n = len(vars)
     for (i, cost_func) in enumerate(vals):
         if cpy:
             cost += (cost_func @ vars[i])
         else:
             cost += np.dot(cost_func, vars[i])
-        # add switching cost
-        if i == 0:
-            cost += weighted_l1_norm(vars[i], start_state, phi, w, cvxpy=cpy) * scale
-        elif i == n-1:
-            cost += weighted_l1_norm(vars[i], vars[i-1], phi, w, cvxpy=cpy) * scale
-            cost += weighted_l1_norm(start_state, vars[i], phi, w, cvxpy=cpy) * scale
-        else:
-            cost += weighted_l1_norm(vars[i], vars[i-1], phi, w, cvxpy=cpy) * scale
-    return cost
-
-
-# objectiveFunctionSimplex computes the minimization objective for CASLB on the simplex, using the wasserstein1 distance
-# @jit
-def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, start_state, cpy=False):
-    cost = 0.0
-    n = vars.shape[0]
-    for (i, cost_func) in enumerate(vals):
-        if cpy:
-            cost += (cost_func @ vars[i])
-        else:
-            cost += np.dot(cost_func, vars[i])
+    cost += (c.T @ vars[-1]) * tau
     for gamma in gammas:
         cost += cp.trace(gamma.T*dist_matrix) * scale
     return cost
 
-# @jit
-def clipObjectiveSimplex(vars, vals, dist_matrix, scale, dim, start_state, cpy=True):
-    # solve for the optimal transport matrices
-    T = len(vals)
-    gammas = [cp.Variable((dim,dim)) for _ in range(0, T+1)]
-    constraints = []
-    # Wasserstein constraints
-    for i in range(0, T+1):
-        constraints += [gammas[i] >= 0]
-        # each x[i] should sum to 1
+# # @jit
+
+# @jit (sol, vals, dist_matrix, scale, dim, c, tau, cpy=False)
+# def clipObjectiveSimplex(vars, vals, dist_matrix, scale, dim, c, tau, start_state, cpy=True):
+#     # solve for the optimal transport matrices
+#     T = len(vals)
+#     gammas = [cp.Variable((dim,dim)) for _ in range(0, T)]
+#     constraints = []
+#     # Wasserstein constraints
+#     for i in range(0, T):
+#         constraints += [gammas[i] >= 0]
+#         # each x[i] should sum to 1
+#         if i == 0:
+#             constraints += [gammas[i] @ np.ones(dim) == start_state]
+#             constraints += [gammas[i].T @ np.ones(dim) == vars[i]]
+#         else:
+#             constraints += [gammas[i] @ np.ones(dim) == vars[i-1]]
+#             constraints += [gammas[i].T @ np.ones(dim) == vars[i]]
+#     prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=True)), constraints)
+#     prob.solve(solver=cp.ECOS_BB)
+#     # if prob.status != 'optimal':
+#     #     print("Optimization failed!")
+#     #     return 1.0
+#     return prob.value
+
+# new clipObjectiveSimplex -- no optimization
+def clipObjectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_state, cpy=True):
+    # get the optimal transport values using the OT library
+    cost = 0.0
+    for (i, cost_func) in enumerate(vals):
+        if cpy:
+            cost += (cost_func @ vars[i])
+        else:
+            cost += np.dot(cost_func, vars[i])
+    for i in range(len(vals)):
         if i == 0:
-            constraints += [gammas[i] @ np.ones(dim) == start_state]
+            # normalize the start state and vars[i]
+            start_emd = np.array(start_state) / np.sum(start_state)
+            varsi_emd = np.array(vars[i]) / np.sum(vars[i])
+            cost += ot.emd2(start_emd, varsi_emd, dist_matrix) * scale
         else:
-            constraints += [gammas[i] @ np.ones(dim) == vars[i-1]]
-        if i == T:
-            constraints += [gammas[i].T @ np.ones(dim) == start_state]
-        else:
-            constraints += [gammas[i].T @ np.ones(dim) == vars[i]]
-    prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, start_state, cpy=True)), constraints)
-    prob.solve(solver=cp.ECOS)
-    return prob.value
+            # normalize vars
+            varsi_emd = np.array(vars[i]) / np.sum(vars[i])
+            varsi1_emd = np.array(vars[i-1]) / np.sum(vars[i-1])
+            try:
+                cost += ot.emd2(varsi_emd, varsi1_emd, dist_matrix) * scale
+            except:
+                print("Opt trans failed")
+                print(vars[i-1])
+                print(vars[i])
+    cost += (c.T @ vars[-1]) * tau
+    return cost
+
+
 
 # objectiveFunctionDiscrete computes the minimization objective for CASLB 
 # @jit
@@ -158,8 +166,9 @@ def singleObjective(x, gamma_ot, c, tau, dist_matrix, cost_func, scale, cpy=True
 # dimension                 -- dim
 # L                         -- L
 # U                         -- U
-def Clipper(vals, w, scale, c, phi, dim, L, U, D, tau, adv, adv_gamma_ots, dist_matrix, epsilon, start):
+def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamma_ots, dist_matrix, epsilon, start):
     sol = []
+    gamma_ots = []
     accepted = 0.0
     rob_accepted = 0.0
 
@@ -179,13 +188,12 @@ def Clipper(vals, w, scale, c, phi, dim, L, U, D, tau, adv, adv_gamma_ots, dist_
         a_gamma_ot = adv_gamma_ots[i]
         adv_accepted += c.T @ a
         adv_so_far += (cost_func @ a) + np.trace(a_gamma_ot.T*dist_matrix) * scale
-        if i == len(a)-1:
-            a_gamma_ot = adv_gamma_ots[i+1]
-            adv_so_far += np.trace(a_gamma_ot.T*dist_matrix) * scale
+        if i == len(adv)-1:
+            adv_so_far += (c.T @ a) * tau
         
         if accepted >= 1:
             # check the previous solution
-            previous = sol[i-1]
+            previous = sol[i-1].copy()
             # if the c function is non-zero, then we need to move everything to OFF states
             if (c.T @ previous) != 0:
                 next_x = np.zeros(dim)
@@ -200,23 +208,27 @@ def Clipper(vals, w, scale, c, phi, dim, L, U, D, tau, adv, adv_gamma_ots, dist_
             continue
         
         remainder = (1 - accepted)
-        
-        if i == len(vals) - 1 and remainder > 0: # must accept last cost function
+        remaining_length = job_length - (remainder * job_length)
+        # if remaining length is 2.5, need to compulsory trade on last three steps
+
+        if i >= len(vals) - np.ceil(remaining_length) and remainder > 0: # must accept last cost functions
             # get the best x_T which satisfies c(x_T) = remainder
             # use cvxpy
             x = cp.Variable(dim)
             gamma_ot = cp.Variable((dim, dim))
-            constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x == remainder]
+            target_capacity = min(1/job_length, remainder)
+            constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x == target_capacity]
             # Wasserstein constraints
             constraints += [gamma_ot >= 0]
             constraints += [gamma_ot @ np.ones(dim) == sol[-1], gamma_ot.T @ np.ones(dim) == x]
             # x, gamma_ot, gamma_ot_2, dist_matrix, cost_func, scale,
             prob = cp.Problem(cp.Minimize(singleObjective(x, gamma_ot, c, tau, dist_matrix, cost_func, scale, cpy=True)), constraints)
-            prob.solve(solver='ECOS')
+            prob.solve(solver=cp.CLARABEL)
             x_T = x.value
             sol.append(x_T)
+            gamma_ots.append(gamma_ot.value)
             accepted += c.T @ x_T
-            break
+            continue
 
         # solve for pseudo cost-defined solution
         prev = start
@@ -225,13 +237,26 @@ def Clipper(vals, w, scale, c, phi, dim, L, U, D, tau, adv, adv_gamma_ots, dist_
         advice_t = (1+epsilon) * (adv_so_far + (c.T @ a)*tau + (1 - adv_accepted)*L)
         x_t, gamma_ot, barx_t = clipHelper(cost_func, accepted, gamma, L, U, D, tau, prev, w, dist_matrix, scale, c, phi, dim, cost_so_far, advice_t, a, adv_accepted, rob_accepted)
 
-        cost_so_far += (cost_func @ x_t) + np.trace(gamma_ot.T*dist_matrix) * scale
+        if gamma_ot is None:
+            print("gamma OT is none!")
+            print(x_t)
+            print(a)
+            return
+        try:
+            cost_so_far += (cost_func @ x_t) + np.trace(gamma_ot.T*dist_matrix) * scale
+        except:
+            print("input operand issue")
+            print(cost_func)
+            print(x_t)
+            print(gamma_ot)
+            print(dist_matrix)
 
         accepted += c.T @ x_t
         rob_accepted += min( (c.T @ barx_t), (c.T @ x_t) )
         sol.append(x_t)
+        gamma_ots.append(gamma_ot)
 
-    cost = clipObjectiveSimplex(np.array(sol), vals, dist_matrix, scale, dim, start)
+    cost = clipObjectiveSimplexNoOpt(sol, vals, dist_matrix, scale, dim, c, tau, start, cpy=True)
     return sol, cost
 
 def consistencyConstraint(x, gamma_ot, gamma_ot_opt, dist_matrix, L, U, cost_func, prev, w, c, tau, cost_so_far, accepted, adv_accepted, scale):
@@ -241,29 +266,6 @@ def consistencyConstraint(x, gamma_ot, gamma_ot_opt, dist_matrix, L, U, cost_fun
 
 # helper for CLIP algorithm
 def clipHelper(cost_func, accepted, gamma, L, U, D, tau, prev, w, dist_matrix, scale, c, phi, dim, cost_so_far, advice_t, a_t, adv_accepted, rob_accepted):
-    # try:
-    #     x0 = a_t
-    #     all_bounds = [(0,1-accepted) for _ in range(0, dim)]
-
-    #     constConstraint = {'type': 'ineq', 'fun': lambda x: consistencyConstraint(x, L, U, cost_func, prev, w, c, cost_so_far, accepted, adv_accepted, advice_t, a_t)}
-
-    #     result = minimize(clipperMinimization, x0=x0, args=(cost_func, gamma, U, L, D, tau, prev, rob_accepted, w, phi, scale, c), method='SLSQP', bounds=all_bounds, constraints=[sumConstraint, constConstraint])
-    #     target = result.x
-    #     rob_target = minimize(clipperMinimization, x0=x0, args=(cost_func, gamma, U, L, D, tau, prev, rob_accepted, w, phi, scale, c), bounds=all_bounds, constraints=sumConstraint).x
-    #     # check if the minimization failed
-    #     if result.success == False:
-    #         # print("minimization failed!") 
-    #         # this happens due to numerical instability epsilon is really small, so I just default to choose normalized a_t
-    #         if np.sum(a_t) > 1-accepted:
-    #             return a_t * ((1-accepted) / np.sum(a_t)), rob_target
-    #         return a_t, rob_target
-    # except:
-    #     print("something went wrong here CLIP_t= {}, z_t={}, ADV_t={}, A_t={}".format(cost_so_far, accepted, advice_t, adv_accepted))
-    #     # return a_t, np.zeros(dim)
-    # else:
-    #     print('blah')
-    #     # return target, rob_target
-    
     # use cvxpy to solve the problem
     x = cp.Variable(dim, pos=True)
     gamma_ot = cp.Variable((dim, dim))
@@ -276,9 +278,12 @@ def clipHelper(cost_func, accepted, gamma, L, U, D, tau, prev, w, dist_matrix, s
     adv_constraints += [gamma_ot_opt @ np.ones(dim) == x, gamma_ot_opt.T @ np.ones(dim) == a_t]
     # add consistency constraint
     adv_constraints += [consistencyConstraint(x, gamma_ot, gamma_ot_opt, dist_matrix, L, U, cost_func, prev, w, c, tau, cost_so_far, accepted, adv_accepted, scale) <= advice_t]
-    adv_prob = cp.Problem(cp.Minimize(clipperMinimization(x, cost_func, gamma, U, L, D, tau, prev, accepted, w, phi, scale, c)), adv_constraints)
-    adv_prob.solve(solver=cp.CLARABEL)
-    target = x.value
+    try:
+        adv_prob = cp.Problem(cp.Minimize(clipperMinimization(x, cost_func, gamma, U, L, D, tau, prev, accepted, w, phi, scale, c)), adv_constraints)
+        adv_prob.solve(solver=cp.CLARABEL)
+        target = x.value
+    except cp.error.SolverError:
+        target = a_t
 
     robust_constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x <= (1-accepted)]
     rob_prob = cp.Problem(cp.Minimize(clipperMinimization(x_bar, cost_func, gamma, U, L, D, tau, prev, accepted, w, phi, scale, c)), robust_constraints)
@@ -286,9 +291,18 @@ def clipHelper(cost_func, accepted, gamma, L, U, D, tau, prev, w, dist_matrix, s
     rob_target = x_bar.value
 
     if adv_prob.status == 'optimal':
-        return target, gamma_ot.value, rob_target
+        # compute optimal transport using ot library
+        # normalize prev and target
+        prev_emd = np.array(prev) / np.sum(prev)
+        target_emd = np.array(target) / np.sum(target)
+        gamma_truth = ot.emd(prev_emd, target_emd, np.array(dist_matrix))
+        return target, gamma_truth, rob_target
     else:
-        return a_t, gamma_ot.value, rob_target
+        # normalize prev and a_t
+        prev_emd = np.array(prev) / np.sum(prev)
+        a_t_emd = np.array(a_t) / np.sum(a_t)
+        gamma_truth = ot.emd(prev_emd, a_t_emd, np.array(dist_matrix))
+        return a_t, gamma_truth, rob_target
 
 def thresholdFunc( w,  U,  L,  D,  tau,  gamma):
     return U - tau + (U / gamma - U + D + tau) * np.exp( w / gamma )

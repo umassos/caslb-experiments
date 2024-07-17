@@ -85,7 +85,7 @@ def objectiveFunctionTree(vars, vals, w, scale, dim, start_state, phi, cpy=False
 
 
 # objectiveFunctionSimplex computes the minimization objective for CASLB on the simplex, using the wasserstein1 distance
-def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, start_state, cpy=False):
+def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=False):
     cost = 0.0
     n = vars.shape[0]
     for (i, cost_func) in enumerate(vals):
@@ -93,6 +93,7 @@ def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, start_
             cost += (cost_func @ vars[i])
         else:
             cost += np.dot(cost_func, vars[i])
+    cost += (c.T @ vars[-1]) * tau
     for gamma in gammas:
         cost += cp.trace(gamma.T*dist_matrix) * scale
     return cost
@@ -126,17 +127,17 @@ def objectiveFunctionDiscrete(vars, vals, dist_matrix, dim, start_state, tau, si
     return cost
     
 
-def negativeObjectiveSimplex(vars, vals, dist_matrix, dim, start_state, cpy=False):
-    return -1 * objectiveFunctionSimplex(vars, vals, dist_matrix, dim, start_state, cpy=cpy)
+def negativeObjectiveSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=False):
+    return -1 * objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=cpy)
 
 
 
 # computing the optimal solution
-def optimalSolution(simplex_cost_functions, dist_matrix, scale, c_simplex, d, start_state):
+def optimalSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state):
     T = len(simplex_cost_functions)
     # declare variables
     x = cp.Variable((T, d))
-    gammas = [cp.Variable((d,d)) for _ in range(0, T+1)]
+    gammas = [cp.Variable((d,d)) for _ in range(0, T)]
     constraints = [0 <= x, x <= 1]
     # add deadline constraint
     c = np.array(c_simplex)
@@ -151,18 +152,16 @@ def optimalSolution(simplex_cost_functions, dist_matrix, scale, c_simplex, d, st
     # add Wasserstein constraints
     for i in range(T):
         constraints += [cp.sum(x[i]) == 1]
-    for i in range(0, T+1):
+    for i in range(0, T):
         constraints += [gammas[i] >= 0]
         # each x[i] should sum to 1
         if i == 0:
             constraints += [gammas[i] @ np.ones(d) == start_state]
+            constraints += [gammas[i].T @ np.ones(d) == x[i]]
         else:
             constraints += [gammas[i] @ np.ones(d) == x[i-1]]
-        if i == T:
-            constraints += [gammas[i].T @ np.ones(d) == start_state]
-        else:
             constraints += [gammas[i].T @ np.ones(d) == x[i]]
-    prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, start_state, cpy=True)), constraints)
+    prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, c_simplex, tau, cpy=True)), constraints)
     prob.solve()
     print("status:", prob.status)
     print("optimal value", prob.value)
@@ -193,10 +192,8 @@ def adversarialSolution(simplex_cost_functions, dist_matrix, c_simplex, d, start
     else:
         return x.value, 0.0
 
-# def singleObjective(x, cost_func, previous, w, scale):
-#     return np.dot(cost_func, x) + weighted_l1_norm(x, previous, w) + weighted_l1_norm(np.zeros_like(x), x, w) * scale
-def singleObjective(x, cost_func, previous, phi, w, scale, start, cpy=True):
-    return (cost_func @ x) + weighted_l1_norm(x, previous, phi, w, cvxpy=cpy) * scale + weighted_l1_norm(start, x, phi, w, cvxpy=cpy) * scale
+def singleObjective(x, c, tau, cost_func, previous, phi, w, scale, cpy=True):
+    return (cost_func @ x) + weighted_l1_norm(x, previous, phi, w, cvxpy=cpy) * scale + (c.T @ x)*tau
 
 # PCM algorithm implementation
 # list of costs (values)    -- vals
@@ -230,7 +227,7 @@ cpdef tuple[list, float] PCM(np.ndarray vals, np.ndarray w, float scale, np.ndar
             # use cvxpy
             x = cp.Variable(dim)
             constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x == remainder]
-            prob = cp.Problem(cp.Minimize(singleObjective(x, cost_func, previous, phi, w, scale, start)), constraints)
+            prob = cp.Problem(cp.Minimize(singleObjective(x, c, tau, cost_func, previous, phi, w, scale)), constraints)
             prob.solve(solver='ECOS')
             x_T = x.value
             sol.append(x_T)

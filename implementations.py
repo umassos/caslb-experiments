@@ -65,7 +65,7 @@ def weighted_l1_capacity(vector, weights, cvxpy=False):
 # w is the weight of the switching cost 
 # dim is the dimension
 # @jit
-def objectiveFunctionTree(vars, vals, w, scale, dim, start_state, phi, cpy=False):
+def objectiveFunctionTree(vars, vals, w, c, tau, scale, dim, start_state, phi, cpy=False):
     cost = 0.0
     vars = vars.reshape((len(vals), dim))
     n = vars.shape[0]
@@ -80,22 +80,20 @@ def objectiveFunctionTree(vars, vals, w, scale, dim, start_state, phi, cpy=False
             cost += weighted_l1_norm(vars[i], start_state, phi, w, cvxpy=cpy) * scale
         elif i == n-1:
             cost += weighted_l1_norm(vars[i], vars[i-1], phi, w, cvxpy=cpy) * scale
-            cost += weighted_l1_norm(start_state, vars[i], phi, w, cvxpy=cpy) * scale
+            cost += (c.T @ vars[i]) * tau
         else:
             cost += weighted_l1_norm(vars[i], vars[i-1], phi, w, cvxpy=cpy) * scale
     return cost
 
-
 # objectiveFunctionSimplex computes the minimization objective for CASLB on the simplex, using the wasserstein1 distance
-# @jit
-def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, start_state, cpy=False):
+def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=False):
     cost = 0.0
-    n = vars.shape[0]
     for (i, cost_func) in enumerate(vals):
         if cpy:
             cost += (cost_func @ vars[i])
         else:
             cost += np.dot(cost_func, vars[i])
+    cost += (c.T @ vars[-1]) * tau
     for gamma in gammas:
         cost += cp.trace(gamma.T*dist_matrix) * scale
     return cost
@@ -131,18 +129,17 @@ def objectiveFunctionDiscrete(vars, vals, dist_matrix, dim, start_state, tau, si
     
 
 # @jit
-def negativeObjectiveSimplex(vars, vals, dist_matrix, dim, start_state, tau, simplex_names, metric, cpy=False):
-    return -1 * objectiveFunctionSimplex(vars, vals, dist_matrix, dim, start_state, tau, simplex_names, metric, cpy=cpy)
-
+def negativeObjectiveSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=False):
+    return -1 * objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=cpy)
 
 
 # computing the optimal solution
-# @jit
-def optimalSolution(simplex_cost_functions, dist_matrix, scale, c_simplex, d, start_state, alt_cost_functions=None):
+# @jitdef optimalSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state):
+def optimalSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state, alt_cost_functions=None):
     T = len(simplex_cost_functions)
     # declare variables
     x = cp.Variable((T, d))
-    gammas = [cp.Variable((d,d)) for _ in range(0, T+1)]
+    gammas = [cp.Variable((d,d)) for _ in range(0, T)]
     constraints = [0 <= x, x <= 1]
     # add deadline constraint
     c = np.array(c_simplex)
@@ -157,28 +154,23 @@ def optimalSolution(simplex_cost_functions, dist_matrix, scale, c_simplex, d, st
     # add Wasserstein constraints
     for i in range(T):
         constraints += [cp.sum(x[i]) == 1]
-    for i in range(0, T+1):
+    for i in range(0, T):
         constraints += [gammas[i] >= 0]
         # each x[i] should sum to 1
         if i == 0:
             constraints += [gammas[i] @ np.ones(d) == start_state]
+            constraints += [gammas[i].T @ np.ones(d) == x[i]]
         else:
             constraints += [gammas[i] @ np.ones(d) == x[i-1]]
-        if i == T:
-            constraints += [gammas[i].T @ np.ones(d) == start_state]
-        else:
-            constraints += [gammas[i].T @ np.ones(d) == x[i]]
-    prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, start_state, cpy=True)), constraints)
-    prob.solve(solver=cp.ECOS)
+            constraints += [gammas[i].T @ np.ones(d) == x[i]] 
+    prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, c_simplex, tau, cpy=True)), constraints)
+    prob.solve(solver=cp.ECOS_BB)
     # print("status:", prob.status)
     # print("optimal value", prob.value)
     # print("optimal var", x.value)
-    if prob.status == 'optimal':
+    if prob.status == 'optimal' or prob.status == 'optimal_inaccurate':
         if alt_cost_functions is not None:
-            # valueGammas = []
-            # for i in range(0, T+1):
-            #     valueGammas.append(gammas[i].value)
-            return x.value, gammas, objectiveFunctionSimplex(x, gammas, alt_cost_functions, dist_matrix, scale, d, start_state, cpy=True).value
+            return x.value, gammas, objectiveFunctionSimplex(x, gammas, alt_cost_functions, dist_matrix, scale, d, c_simplex, tau, cpy=True).value
         return x.value, prob.value
     else:
         return x.value, 0.0
@@ -240,7 +232,7 @@ def singleObjective(x, cost_func, previous, phi, w, scale, start, cpy=True):
 # U                         -- U
 # D                         -- diameter of the metric
 # @jit
-def PCM(vals, w, scale, c, phi, dim, L, U, D, tau, start):
+def PCM(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, start):
     sol = []
     accepted = 0.0
 
@@ -251,7 +243,7 @@ def PCM(vals, w, scale, c, phi, dim, L, U, D, tau, start):
     for (i, cost_func) in enumerate(vals):
         if accepted >= 1:
             # check the previous solution
-            previous = sol[i-1]
+            previous = sol[i-1].copy()
             # if the c function is non-zero, then we need to move everything to OFF states
             if (c.T @ previous) != 0:
                 next_x = np.zeros(dim)
@@ -266,18 +258,23 @@ def PCM(vals, w, scale, c, phi, dim, L, U, D, tau, start):
             continue
         
         remainder = (1 - accepted)
-        
-        if i == len(vals) - 1: # must accept last cost function
+        remaining_length = job_length - (remainder * job_length)
+        # if remaining length is 2.5, need to compulsory trade on last three steps
+
+        if i >= len(vals) - np.ceil(remaining_length) and remainder > 0: # must accept last cost functions
             # get the best x_T which satisfies c(x_T) = remainder
             # use cvxpy
             x = cp.Variable(dim)
-            constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x == remainder]
+            target_capacity = min(1/job_length, remainder)
+            constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x == target_capacity]
+            # Wasserstein constraints
+            # x, gamma_ot, gamma_ot_2, dist_matrix, cost_func, scale,
             prob = cp.Problem(cp.Minimize(singleObjective(x, cost_func, previous, phi, w, scale, start)), constraints)
-            prob.solve(solver='ECOS')
+            prob.solve(solver=cp.CLARABEL)
             x_T = x.value
             sol.append(x_T)
             accepted += c.T @ x_T
-            break
+            continue
 
         # solve for pseudo cost-defined solution
         previous = np.zeros(dim)
@@ -293,7 +290,7 @@ def PCM(vals, w, scale, c, phi, dim, L, U, D, tau, start):
         accepted += c.T @ x_t
         sol.append(x_t) 
 
-    cost = objectiveFunctionTree(np.array(sol), vals, w, scale, dim, start, phi)
+    cost = objectiveFunctionTree(np.array(sol), vals, w, c, tau, scale, dim, start, phi)
     return sol, cost
 
 # helper for PCM algorithm

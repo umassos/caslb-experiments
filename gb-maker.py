@@ -81,7 +81,7 @@ def experiment(GB):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 100
 
     opts = []
     pcms = []
@@ -123,8 +123,8 @@ def experiment(GB):
         #################################### solve for the optimal solution
 
         # solve for the optimal solution using cvxpy
-        sol, solCost = f.optimalSolution(simplexSequence, simplex_distances, scale, c_simplex, dim, start_simplex)
-        x_opt = sol.reshape((T, d))
+        sol, solCost = f.optimalSolution(simplexSequence, simplex_distances, tau*scale, scale, c_simplex, dim, start_simplex)
+        x_opt = sol.reshape((T, dim))
         # print(sol)
         # print(x_opt)
         # print(solCost)
@@ -134,19 +134,19 @@ def experiment(GB):
         # solve for the advice using perturbed sequence
         errordSequence = simplexSequence + np.random.uniform(-0.5, 0.5, simplexSequence.shape)*simplexSequence
         # print(simplexSequence)
-        # print(errordSequence)
-        adv, adv_gamma_ots, advCost = f.optimalSolution(errordSequence, simplex_distances, scale, c_simplex, dim, start_simplex, alt_cost_functions=simplexSequence)
+        # print(errordSequence) (simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state):
+        adv, adv_gamma_ots, advCost = f.optimalSolution(errordSequence, simplex_distances, tau*scale, scale, c_simplex, dim, start_simplex, alt_cost_functions=simplexSequence)
         adv_ots = [gamma.value for gamma in adv_gamma_ots]
         x_adv = adv.reshape((T, dim))
 
         #################################### get the online PCM solution
 
-        pcm, pcmCost = f.PCM(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, start_simplex)
-        print(pcm @ c_simplex.T)
-        print(pcm)
-        print(pcmCost)
-        print(start_simplex)
-        print(simplexSequence)
+        pcm, pcmCost = f.PCM(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, start_simplex)
+        # print(pcm @ c_simplex.T)
+        # print(pcm)
+        # print(pcmCost)
+        # print(start_simplex)
+        # print(simplexSequence)
 
         #################################### get the online comparison solutions
 
@@ -162,7 +162,7 @@ def experiment(GB):
         # clip0, clip0Cost = adv, f.objectiveFunction(adv, cost_functions, weights, d)
 
         epsilon = 2
-        clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
+        clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
 
         # epsilon = 5
         # clip5, clip5Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
@@ -196,7 +196,7 @@ def experiment(GB):
     # cost_agnostics = np.array(cost_agnostics)
     # cost_constThresholds = np.array(cost_constThresholds)
     # cost_minimizers = np.array(cost_minimizers)
-    cost_clip2s = np.array(cost_clip2s) * 0.99
+    cost_clip2s = np.array(cost_clip2s)
     # cost_baseline2s = np.array(cost_baseline2s)
 
     crPCM = cost_pcms/cost_opts
@@ -230,8 +230,15 @@ def experiment(GB):
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)
 
+
+
 # use multiprocessing here
 if __name__ == "__main__":
     gbs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     with Pool(10) as p:
         p.map(experiment, gbs)
+
+# if __name__ == "__main__":
+#     gbs = [1, 3, 5, 7, 9]
+#     for gb in tqdm(gbs):
+#         experiment(gb)
