@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.special import lambertw
-from multiprocessing import Pool
 import seaborn as sns
 import pickle
 import sys
@@ -177,7 +176,7 @@ def experiment(GB):
         # constThresholds.append(const)
         # minimizers.append(mini)
         # clip0s.append(clip0)
-        clip2s.append(clip2)
+        # clip2s.append(clip2)
 
         cost_opts.append(solCost)
         cost_pcms.append(pcmCost)
@@ -186,7 +185,7 @@ def experiment(GB):
         # cost_constThresholds.append(constCost)
         # cost_minimizers.append(miniCost)
         # cost_clip0s.append(clip0Cost)
-        cost_clip2s.append(clip2Cost)
+        # cost_clip2s.append(clip2Cost)
 
 
     # compute competitive ratios
@@ -196,7 +195,7 @@ def experiment(GB):
     # cost_agnostics = np.array(cost_agnostics)
     # cost_constThresholds = np.array(cost_constThresholds)
     # cost_minimizers = np.array(cost_minimizers)
-    cost_clip2s = np.array(cost_clip2s) * 0.99
+    cost_clip2s = np.array(cost_clip2s)
     # cost_baseline2s = np.array(cost_baseline2s)
 
     crPCM = cost_pcms/cost_opts
@@ -232,6 +231,6 @@ def experiment(GB):
 
 # use multiprocessing here
 if __name__ == "__main__":
-    gbs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    with Pool(10) as p:
-        p.map(experiment, gbs)
+    gbs = np.arange(0, 105, 5)
+    for gb in tqdm(gbs):
+        experiment(gb)

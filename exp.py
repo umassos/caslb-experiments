@@ -169,7 +169,7 @@ for _ in tqdm(range(epochs)):
     # clip0, clip0Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
 
     epsilon = 2
-    clip2, clip2Cost = Clipper(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
+    clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
     print(clip2)
 
     opts.append(sol)
