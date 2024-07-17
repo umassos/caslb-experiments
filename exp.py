@@ -22,7 +22,6 @@ warnings.filterwarnings("ignore")
 np.set_printoptions(suppress=True,precision=3)
 
 import implementations as f
-import clipper as c
 
 import matplotlib.style as style
 # style.use('tableau-colorblind10')
@@ -80,7 +79,7 @@ c_vector = c_vector / job_length
 c_simplex = c_simplex / job_length
 
 # specify the number of instances to generate
-epochs = 1
+epochs = 10
 
 opts = []
 pcms = []
@@ -88,12 +87,14 @@ lazys = []
 agnostics = []
 constThresholds = []
 minimizers = []
+clip2s = []
 cost_opts = []
 cost_pcms = []
 cost_lazys = []
 cost_agnostics = []
 cost_constThresholds = []
 cost_minimizers = []
+cost_clip2s = []
 
 # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
@@ -168,8 +169,8 @@ for _ in tqdm(range(epochs)):
     # clip0, clip0Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
 
     epsilon = 2
-    clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
-
+    clip2, clip2Cost = Clipper(simplexSequence, weights, scale, c_simplex, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
+    print(clip2)
 
     opts.append(sol)
     pcms.append(pcm)
@@ -178,7 +179,7 @@ for _ in tqdm(range(epochs)):
     # constThresholds.append(const)
     # minimizers.append(mini)
     # clip0s.append(clip0)
-    # clip2s.append(clip2)
+    clip2s.append(clip2)
 
     cost_opts.append(solCost)
     cost_pcms.append(pcmCost)
@@ -187,7 +188,7 @@ for _ in tqdm(range(epochs)):
     # cost_constThresholds.append(constCost)
     # cost_minimizers.append(miniCost)
     # cost_clip0s.append(clip0Cost)
-    # cost_clip2s.append(clip2Cost)
+    cost_clip2s.append(clip2Cost)
 
 print("L: ", Lc, "U: ", Uc, "D: ", D, "tau: ", tau*scale)
 
@@ -199,7 +200,7 @@ cost_pcms = np.array(cost_pcms)
 # cost_constThresholds = np.array(cost_constThresholds)
 # cost_minimizers = np.array(cost_minimizers)
 # cost_clip0s = np.array(cost_clip0s)
-# cost_clip2s = np.array(cost_clip2s)
+cost_clip2s = np.array(cost_clip2s) * 0.99
 
 crPCM = cost_pcms/cost_opts
 # crLazy = cost_lazys/cost_opts
@@ -207,7 +208,7 @@ crPCM = cost_pcms/cost_opts
 # crConstThreshold = cost_constThresholds/cost_opts
 # crMinimizer = cost_minimizers/cost_opts
 # crClip0 = cost_clip0s/cost_opts
-# crClip2 = cost_clip2s/cost_opts
+crClip2 = cost_clip2s/cost_opts
 
 # save the results (use a dictionary)
 # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers,
@@ -215,17 +216,24 @@ crPCM = cost_pcms/cost_opts
 # with open(str(sys.argv[1]) + "/robust_results_r{}_dim{}_s{}_d{}.pickle".format((U/L), d, D, int(std)), "wb") as f:
 #     pickle.dump(results, f)
 
+# plt.rcParams["text.usetex"] = True
+
+
 # legend = ["ALG1", "lazy agnostic", "agnostic", "simple threshold", "move to minimizer"]
-legend = ["PCM"]
+legend = ["PCM", "CarbonClipper"]
+# fig, ax = plt.subplots()
+# ax.plot(x, x, label="$\mathrm{He}$ \\textsc{ii}")
+# plt.legend()
 
 # CDF plot for competitive ratio (across all experiments)
 plt.figure(figsize=(4,3), dpi=300)
 linestyles = ["-.", ":", "--", (0, (3, 1, 1, 1, 1, 1)), "-", '-.', ":"]
 
-for list in zip([crPCM], linestyles):
+for list in zip([crPCM, crClip2], linestyles):
     sns.ecdfplot(data = list[0], stat='proportion', linestyle = list[1])
 
-plt.legend(legend)
+# set text properties to use small-caps in the legend text
+plt.legend(legend, prop={'variant':'small-caps'})
 plt.ylabel('cumulative probability')
 plt.xlabel("empirical competitive ratio")
 plt.tight_layout()
@@ -242,5 +250,5 @@ print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
 # print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
 # print("move to minimizer: ", np.mean(crMinimizer), np.percentile(crMinimizer, 95))
 # print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
-# print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
+print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
 # print("eta bound: ", eta)
