@@ -38,31 +38,31 @@ class Tree:
 
 
 class MetricSpace:
-    def __init__(self, tau=1):
+    def __init__(self, tau=1, names=names):
+        self.names = names
         self.tau = tau
         self.df = pd.read_csv("latencies.csv", index_col=0)
         self.avg_distances, self.std_devs = self.get_distances(self.df)
         self.simplex_names, _, _ = self.generate_simplex_distances()
 
         # get the tree embedding
-        self.tree, self.weights, self.levels = self.frt_algorithm(names)
+        self.tree, self.weights, self.levels = self.frt_algorithm(self.names)
         self.weight_vector = self.get_weight_vector()
         self.unit_c_vector, self.name_vector = self.get_unit_c_vector()
-        self.phi_inv = self.phi_inverse(names, self.name_vector, self.simplex_names)
-        self.phi_mat = self.phi(names, self.name_vector, self.simplex_names)
+        self.phi_inv = self.phi_inverse(self.names, self.name_vector, self.simplex_names)
+        self.phi_mat = self.phi(self.names, self.name_vector, self.simplex_names)
 
 
     # change this for subset
     def get_names(self):
-        return names
+        return self.names
     
-
     def refresh_tree(self):
-        self.tree, self.weights, self.levels = self.frt_algorithm(names)
+        self.tree, self.weights, self.levels = self.frt_algorithm(self.names)
         self.weight_vector = self.get_weight_vector()
         self.unit_c_vector, self.name_vector = self.get_unit_c_vector()
-        self.phi_inv = self.phi_inverse(names, self.name_vector, self.simplex_names)
-        self.phi_mat = self.phi(names, self.name_vector, self.simplex_names)
+        self.phi_inv = self.phi_inverse(self.names, self.name_vector, self.simplex_names)
+        self.phi_mat = self.phi(self.names, self.name_vector, self.simplex_names)
 
     # loads data and computes the average and std dev of latencies between the AWS regions
     def get_distances(self, df):
@@ -111,7 +111,7 @@ class MetricSpace:
     def generate_simplex_distances(self):
         simplex_names = []
         c_simplex = []
-        for name in names:
+        for name in self.names:
             simplex_names.append(name + " ON")
             c_simplex.append(1)
             simplex_names.append(name + " OFF")
