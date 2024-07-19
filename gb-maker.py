@@ -47,7 +47,7 @@ def experiment(GB):
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
-    job_length = 2
+    job_length = 4
 
     # get tau from cmd args
     tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
@@ -81,7 +81,7 @@ def experiment(GB):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 15
 
     opts = []
     pcms = []
@@ -107,7 +107,7 @@ def experiment(GB):
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
-        T = np.random.randint(6, 24)
+        T = np.random.randint(12, 48)
 
         # randomly choose an index from datetimes, and make sure there are at least T days including/after that index
         index = np.random.randint(0, len(datetimes) - T)
