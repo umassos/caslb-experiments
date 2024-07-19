@@ -108,7 +108,7 @@ def experiment(job_length):
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
-        T = np.random.randint(max(12, job_length*2), 72)
+        T = np.random.randint(max(12, job_length*2), 60)
 
         # randomly choose an index from datetimes, and make sure there are at least T days including/after that index
         index = np.random.randint(0, len(datetimes) - T)
