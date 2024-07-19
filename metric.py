@@ -67,11 +67,11 @@ class MetricSpace:
     # loads data and computes the average and std dev of latencies between the AWS regions
     def get_distances(self, df):
         # compute average and std dev of latencies between the AWS regions and store them in a matrix
-        avg_distances = np.zeros((len(names), len(names)))
-        std_dev_distances = np.zeros((len(names), len(names)))
+        avg_distances = np.zeros((len(self.names), len(self.names)))
+        std_dev_distances = np.zeros((len(self.names), len(self.names)))
                             
-        for from_region in names:
-            for to_region in names:
+        for from_region in self.names:
+            for to_region in self.names:
                 if from_region == to_region:
                     continue
                 # filter the dataframe to get the latencies between the two regions
@@ -80,16 +80,16 @@ class MetricSpace:
                 # combine the two series
                 latencies = pd.concat([latencies_from, latencies_to])
                 # compute the average and std dev
-                avg_distances[names.index(from_region), names.index(to_region)] = latencies.mean()
-                avg_distances[names.index(to_region), names.index(from_region)] = latencies.mean()
-                std_dev_distances[names.index(from_region), names.index(to_region)] = latencies.std()
-                std_dev_distances[names.index(to_region), names.index(from_region)] = latencies.std()
+                avg_distances[self.names.index(from_region), self.names.index(to_region)] = latencies.mean()
+                avg_distances[self.names.index(to_region), self.names.index(from_region)] = latencies.mean()
+                std_dev_distances[self.names.index(from_region), self.names.index(to_region)] = latencies.std()
+                std_dev_distances[self.names.index(to_region), self.names.index(from_region)] = latencies.std()
         
         return avg_distances, std_dev_distances
     
     # given distance matrix, computes distance between two points
     def distance(self, point1, point2):
-        return self.avg_distances[names.index(point1), names.index(point2)]
+        return self.avg_distances[self.names.index(point1), self.names.index(point2)]
     
     # given distance, compute a ball of points around a point
     def ball(self, points, point, radius):
@@ -291,7 +291,7 @@ class MetricSpace:
     # convert ANY regular vector into a simplex vector (Phi inverse)
     def convert_to_simplex(self, vector):
         simplex_vector = np.zeros(len(self.simplex_names))
-        for name in names:
+        for name in self.names:
             simplex_vector[self.simplex_names.index(name + " ON")] = vector[self.name_vector.index(name)] - vector[self.name_vector.index(name + " OFF")]
             simplex_vector[self.simplex_names.index(name + " OFF")] = vector[self.name_vector.index(name + " OFF")]
         return simplex_vector
@@ -300,7 +300,7 @@ class MetricSpace:
     def convert_to_regular(self, simplex_vector):
         vector = np.zeros(len(self.name_vector))
         vector[0] = 1
-        for name in names:
+        for name in self.names:
             name_index = self.name_vector.index(name)
             name_OFF_index = self.name_vector.index(name + " OFF")  
             cumulative = simplex_vector[self.simplex_names.index(name + " ON")] + simplex_vector[self.simplex_names.index(name + " OFF")]

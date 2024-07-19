@@ -5,9 +5,9 @@ import sys
 import random
 import math
 import itertools
+import traceback
 import numpy as np
 import pandas as pd
-import traceback
 import matplotlib.pyplot as plt
 from scipy.special import lambertw
 from multiprocessing import Pool
@@ -27,18 +27,16 @@ import matplotlib.style as style
 style.use('tableau-colorblind10')
 # style.use('seaborn-v0_8-paper')
 
-def experiment(GB):
+def experiment(subset):
     import implementations as f
     import clipper as c
     #################################### set up experiment parameters
 
     # get the parameters from the command line
-
-    # how many regions to choose
-    # regions = int(sys.argv[1])
+    subset_names, subset_header = subset
 
     # gigabytes of data that need to be "transferred" (i.e. the diameter of the metric space)
-    setGB = GB # float(sys.argv[1])
+    setGB = 4 # float(sys.argv[1])
 
     # scale factor for metric space
     eastToWest = 221.0427046263345 # milliseconds
@@ -54,11 +52,11 @@ def experiment(GB):
     tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
 
     # load in metric space
-    m = metric.MetricSpace(tau)
-    names = m.get_names()
+    m = metric.MetricSpace(tau, names=subset_names)
+    names = subset_names
 
     # get the diameter
-    D = m.diameter() * scale
+    D = m.diameter(subset_names) * scale
 
     # get the distance matrix
     simplex_names, c_simplex, simplex_distances = m.generate_simplex_distances()
@@ -82,7 +80,7 @@ def experiment(GB):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 15
 
     opts = []
     pcms = []
@@ -91,7 +89,6 @@ def experiment(GB):
     agnostics = []
     constThresholds = []
     greedys = []
-
 
     cost_opts = []
     cost_pcms = []
@@ -187,7 +184,7 @@ def experiment(GB):
             # print the details of the exception
             print(traceback.format_exception(*sys.exc_info()))
             continue
-
+        
         opts.append(sol)
         pcms.append(pcm)
         agnostics.append(agn)
@@ -228,13 +225,13 @@ def experiment(GB):
                "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("gb/gb_results{}.pickle".format(setGB), "wb") as f:
+    with open("subset/subset_{}.pickle".format(subset_header), "wb") as f:
         pickle.dump(results, f)
 
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
-    print("Simulated GB: {}".format(setGB))
+    print("Simulated Subset: {}".format(subset_names))
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
@@ -248,11 +245,31 @@ def experiment(GB):
 
 # use multiprocessing here
 if __name__ == "__main__":
-    gbs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    with Pool(10) as p:
-        p.map(experiment, gbs)
+    originalNames = [
+        "us-east-1",      # US East (N. Virginia)
+        "us-west-1",      # US West (N. California)
+        "us-west-2",      # US West (Oregon)
+        "af-south-1",     # Africa (Cape Town)
+        "ap-south-2",     # Asia Pacific (Hyderabad)
+        "ap-northeast-2", # Asia Pacific (Seoul)
+        "ap-southeast-2", # Asia Pacific (Sydney)
+        "ca-central-1",   # Canada (Central)
+        "eu-central-1",   # Europe (Frankfurt)
+        "eu-west-2",      # Europe (London)
+        "eu-west-3",      # Europe (Paris)
+        "eu-north-1",     # Europe (Stockholm)
+        "sa-east-1",       # South America (São Paulo)
+        "il-central-1"    # Israel (Tel Aviv)
+    ]
+    GDPRsubset = [ "eu-central-1", "eu-west-2", "eu-west-3",  "eu-north-1" ]
+    NAsubset = [ "us-east-1", "us-west-1", "us-west-2", "ca-central-1" ]
+    crossingsSubset = ["us-east-1", "us-west-2",  "af-south-1",  "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1" ]
+    noHydroSubset = ["us-east-1", "us-west-1", "us-west-2",  "af-south-1", "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "eu-west-3", "sa-east-1", "il-central-1" ]
+    subsets = [(GDPRsubset, "GDPR"), (NAsubset, "NA"), (crossingsSubset, "crossings"), (noHydroSubset, "noHydro")]
+    for i in range(5, 12):
+        # choose a number of regions (random number between 5 and 14)
+        numregions = random.randint(5, 14)
+        subsets.append((random.sample(originalNames, numregions), "random{}".format(i)))
 
-# if __name__ == "__main__":
-#     gbs = [1, 3, 5, 7, 9]
-#     for gb in tqdm(gbs):
-#         experiment(gb)
+    with Pool(10) as p:
+        p.map(experiment, subsets)

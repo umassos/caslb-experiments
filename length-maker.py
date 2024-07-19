@@ -186,6 +186,7 @@ def experiment(job_length):
             # if anything goes wrong, it's probably a numerical error, but skip this instance and move on.
             # print the details of the exception
             print(traceback.format_exception(*sys.exc_info()))
+            continue
         
         opts.append(sol)
         pcms.append(pcm)
