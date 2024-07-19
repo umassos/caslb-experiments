@@ -156,10 +156,6 @@ def solve_gamma(alpha, U, L, D, tau):
     return result
 
 
-def singleObjective(x, gamma_ot, c, tau, dist_matrix, cost_func, scale, cpy=True):
-    return (cost_func @ x) + cp.trace(gamma_ot*dist_matrix) * scale + (c.T @ x)*tau
-
-
 # CLIP algorithm implementation
 # list of costs (values)    -- vals
 # switching cost weight     -- w
@@ -187,7 +183,7 @@ def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamm
         a = adv[i]
         a_gamma_ot = adv_gamma_ots[i]
         adv_accepted += c.T @ a
-        adv_so_far += (cost_func @ a) + np.trace(a_gamma_ot.T*dist_matrix) * scale
+        adv_so_far += (cost_func @ a) + (np.trace(a_gamma_ot.T*dist_matrix) * scale * 0.95)
         if i == len(adv)-1:
             adv_so_far += (c.T @ a) * tau
         
@@ -234,7 +230,7 @@ def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamm
         prev = start
         if i != 0:
             prev = sol[i-1]
-        advice_t = (1+epsilon) * (adv_so_far + (c.T @ a)*tau + (1 - adv_accepted)*L)
+        advice_t = (1+epsilon) * (adv_so_far + (1 - adv_accepted)*L) #+ (c.T @ a)*tau
         x_t, gamma_ot, barx_t = clipHelper(cost_func, accepted, gamma, L, U, D, tau, prev, w, dist_matrix, scale, c, phi, dim, cost_so_far, advice_t, a, adv_accepted, rob_accepted)
 
         if gamma_ot is None:
@@ -259,9 +255,13 @@ def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamm
     cost = clipObjectiveSimplexNoOpt(sol, vals, dist_matrix, scale, dim, c, tau, start, cpy=True)
     return sol, cost
 
+
+def singleObjective(x, gamma_ot, c, tau, dist_matrix, cost_func, scale, cpy=True):
+    return (cost_func @ x) + cp.trace(gamma_ot*dist_matrix) * scale + (c.T @ x)*tau
+
 def consistencyConstraint(x, gamma_ot, gamma_ot_opt, dist_matrix, L, U, cost_func, prev, w, c, tau, cost_so_far, accepted, adv_accepted, scale):
     comp = cp.max(cp.vstack([0, (adv_accepted - accepted - c.T @ x)]))
-    compulsory = (1 - accepted - (c.T @ x))*2 + comp*(U-L)
+    compulsory = (1 - accepted - (c.T @ x))*L + comp*(U-L)
     return cost_so_far + singleObjective(x, gamma_ot, c, tau, dist_matrix, cost_func, scale, cpy=True) + cp.trace(gamma_ot_opt*dist_matrix) * scale + compulsory
 
 # helper for CLIP algorithm

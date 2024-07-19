@@ -210,43 +210,33 @@ def optimalSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, 
 
 # computing the adversarial solution using cvxpy instead
 # @jit
-def adversarialSolution(simplex_cost_functions, dist_matrix, scale, c_simplex, d, start_state):
+def adversarialSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state):
     T = len(simplex_cost_functions)
     # declare variables
     x = cp.Variable((T, d))
-    gammas = [cp.Variable((d,d)) for _ in range(0, T+1)]
+    gammas = [cp.Variable((d,d)) for _ in range(0, T)]
     constraints = [0 <= x, x <= 1]
     # add deadline constraint
     c = np.array(c_simplex)
     constraints += [cp.sum(x @ c.T) == 1]
-    # # add location constraint
-    # A = -1*np.ones((int(d/2), d))
-    # for j in range(0, d):
-    #     row = j//2
-    #     A[row][j] = 1
-    # for i in range(0, T):
-    #     constraints += [A @ x[i] == 1]
-    # add Wasserstein constraints
     for i in range(T):
         constraints += [cp.sum(x[i]) == 1]
-    for i in range(0, T+1):
+    for i in range(0, T):
         constraints += [gammas[i] >= 0]
         # each x[i] should sum to 1
         if i == 0:
             constraints += [gammas[i] @ np.ones(d) == start_state]
+            constraints += [gammas[i].T @ np.ones(d) == x[i]]
         else:
             constraints += [gammas[i] @ np.ones(d) == x[i-1]]
-        if i == T:
-            constraints += [gammas[i].T @ np.ones(d) == start_state]
-        else:
-            constraints += [gammas[i].T @ np.ones(d) == x[i]]
-    prob = cp.Problem(cp.Minimize(negativeObjectiveSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, start_state, cpy=True)), constraints)
-    prob.solve()
-    print("status:", prob.status)
-    print("optimal value", prob.value)
-    print("optimal var", x.value)
-    if prob.status == 'optimal':
-        return x.value, prob.value
+            constraints += [gammas[i].T @ np.ones(d) == x[i]] 
+    prob = cp.Problem(cp.Minimize(negativeObjectiveSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, c_simplex, tau, cpy=True)), constraints)
+    prob.solve(solver=cp.ECOS_BB)
+    # print("status:", prob.status)
+    # print("optimal value", prob.value)
+    # print("optimal var", x.value)
+    if prob.status == 'optimal' or prob.status == 'optimal_inaccurate':
+        return x.value, objectiveSimplexNoOpt(x.value, simplex_cost_functions, dist_matrix, scale, d, c_simplex, tau, start_state, cpy=False)
     else:
         return x.value, 0.0
 
