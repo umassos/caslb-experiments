@@ -5,9 +5,9 @@ import sys
 import random
 import math
 import itertools
+import traceback
 import numpy as np
 import pandas as pd
-import traceback
 import matplotlib.pyplot as plt
 from scipy.special import lambertw
 from multiprocessing import Pool
@@ -27,7 +27,7 @@ import matplotlib.style as style
 style.use('tableau-colorblind10')
 # style.use('seaborn-v0_8-paper')
 
-def experiment(GB):
+def experiment(job_length):
     import implementations as f
     import clipper as c
     #################################### set up experiment parameters
@@ -38,7 +38,7 @@ def experiment(GB):
     # regions = int(sys.argv[1])
 
     # gigabytes of data that need to be "transferred" (i.e. the diameter of the metric space)
-    setGB = GB # float(sys.argv[1])
+    setGB = 4 # float(sys.argv[1])
 
     # scale factor for metric space
     eastToWest = 221.0427046263345 # milliseconds
@@ -48,7 +48,7 @@ def experiment(GB):
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
-    job_length = 4
+    job_length = job_length
 
     # get tau from cmd args
     tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
@@ -82,7 +82,7 @@ def experiment(GB):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 15
 
     opts = []
     pcms = []
@@ -108,7 +108,7 @@ def experiment(GB):
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
-        T = np.random.randint(12, 48)
+        T = np.random.randint(max(12, job_length*2), 72)
 
         # randomly choose an index from datetimes, and make sure there are at least T days including/after that index
         index = np.random.randint(0, len(datetimes) - T)
@@ -186,7 +186,7 @@ def experiment(GB):
             # if anything goes wrong, it's probably a numerical error, but skip this instance and move on.
             # print the details of the exception
             print(traceback.format_exception(*sys.exc_info()))
-
+        
         opts.append(sol)
         pcms.append(pcm)
         agnostics.append(agn)
@@ -227,13 +227,13 @@ def experiment(GB):
                "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("gb/gb_results{}.pickle".format(setGB), "wb") as f:
+    with open("length/length_results{}.pickle".format(job_length), "wb") as f:
         pickle.dump(results, f)
 
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
-    print("Simulated GB: {}".format(setGB))
+    print("Simulated Job Length: {}".format(job_length))
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
@@ -247,9 +247,9 @@ def experiment(GB):
 
 # use multiprocessing here
 if __name__ == "__main__":
-    gbs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    lengths = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
     with Pool(10) as p:
-        p.map(experiment, gbs)
+        p.map(experiment, lengths)
 
 # if __name__ == "__main__":
 #     gbs = [1, 3, 5, 7, 9]
