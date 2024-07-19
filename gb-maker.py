@@ -85,11 +85,21 @@ def experiment(GB):
 
     opts = []
     pcms = []
+    clip0s = []
     clip2s = []
+    agnostics = []
+    constThresholds = []
+    greedys = []
+
 
     cost_opts = []
     cost_pcms = []
+    cost_clip0s = []
     cost_clip2s = []
+    cost_agnostics = []
+    cost_constThresholds = []
+    cost_greedys = []
+
 
     # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
@@ -151,15 +161,15 @@ def experiment(GB):
         #################################### get the online comparison solutions
 
         # lazy, lazyCost = f.lazyAgnostic(cost_functions, weights, d)
-        # agn, agnCost = f.agnostic(cost_functions, weights, d)
+        agn, agnCost = f.agnostic(simplexSequence, weights, scale, c_simplex, job_length, dim, tau, simplex_distances, start_simplex)
 
-        # const, constCost = f.threshold(cost_functions, weights, d, L, U)
+        const, constCost = f.threshold(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, start_simplex, simplex_distances)
 
-        # mini, miniCost = f.moveMinimizer(cost_functions, weights, d)
+        greed, greedCost = f.greedy(simplexSequence, weights, scale, c_simplex, job_length, dim, tau, simplex_distances, start_simplex)
 
         #################################### get the online CLIP solution
-        # epsilon = 0
-        # clip0, clip0Cost = adv, f.objectiveFunction(adv, cost_functions, weights, d)
+        epsilon = 0
+        clip0, clip0Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
 
         epsilon = 2
         clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
@@ -172,60 +182,56 @@ def experiment(GB):
 
         opts.append(sol)
         pcms.append(pcm)
-        # lazys.append(lazy)
-        # agnostics.append(agn)
-        # constThresholds.append(const)
-        # minimizers.append(mini)
-        # clip0s.append(clip0)
+        agnostics.append(agn)
+        constThresholds.append(const)
+        greedys.append(greed)
+        clip0s.append(clip0)
         clip2s.append(clip2)
 
         cost_opts.append(solCost)
         cost_pcms.append(pcmCost)
-        # cost_lazys.append(lazyCost)
-        # cost_agnostics.append(agnCost)
-        # cost_constThresholds.append(constCost)
-        # cost_minimizers.append(miniCost)
-        # cost_clip0s.append(clip0Cost)
+        cost_agnostics.append(agnCost)
+        cost_constThresholds.append(constCost)
+        cost_greedys.append(greedCost)
+        cost_clip0s.append(clip0Cost)
         cost_clip2s.append(clip2Cost)
 
 
     # compute competitive ratios
     cost_opts = np.array(cost_opts)
     cost_pcms = np.array(cost_pcms)
-    # cost_lazys = np.array(cost_lazys)
-    # cost_agnostics = np.array(cost_agnostics)
-    # cost_constThresholds = np.array(cost_constThresholds)
-    # cost_minimizers = np.array(cost_minimizers)
+    cost_agnostics = np.array(cost_agnostics)
+    cost_constThresholds = np.array(cost_constThresholds)
+    cost_greedys = np.array(cost_greedys)
+    cost_clip0s = np.array(cost_clip0s)
     cost_clip2s = np.array(cost_clip2s)
     # cost_baseline2s = np.array(cost_baseline2s)
 
     crPCM = cost_pcms/cost_opts
-    # crLazy = cost_lazys/cost_opts
-    # crAgnostic = cost_agnostics/cost_opts
-    # crConstThreshold = cost_constThresholds/cost_opts
-    # crMinimizer = cost_minimizers/cost_opts
+    crAgnostic = cost_agnostics/cost_opts
+    crConstThreshold = cost_constThresholds/cost_opts
+    crGreedy = cost_greedys/cost_opts
+    crClip0 = cost_clip0s/cost_opts
     crClip2 = cost_clip2s/cost_opts
     # crBaseline2 = cost_baseline2s/cost_opts
 
     # save the results (use a dictionary)
-    results = {"opts": opts, "pcms": pcms, "clip2s": clip2s, "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_clip2s": cost_clip2s}
+    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "clip0s": clip0s, "clip2s": clip2s, 
+               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
     with open("gb/gb_results{}.pickle".format(setGB), "wb") as f:
         pickle.dump(results, f)
 
-    #legend = ["ALG1", "lazy agnostic", "agnostic", "simple threshold", "move to minimizer", "CLIP[$\\epsilon=0.1$]", "CLIP[$\\epsilon=2$]", "CLIP[$\\epsilon=5$]", "CLIP[$\\epsilon=10$]"]
-    # legend = ["ALG1", "CLIP[$\\epsilon=0$]", "CLIP[$\\epsilon=2$]", "CLIP[$\\epsilon=5$]", "CLIP[$\\epsilon=10$]", "baseline[$\\epsilon=0$]", "baseline[$\\epsilon=2$]", "baseline[$\\epsilon=5$]", "baseline[$\\epsilon=10$]"]
-    legend = ["PCM", "CarbonClipper[$\\epsilon=2$]"]
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
     print("Simulated GB: {}".format(setGB))
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
-    # print("lazy agnostic: ", np.mean(crLazy), np.percentile(crLazy, 95))
-    # print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
-    # print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
-    # print("move to minimizer: ", np.mean(crMinimizer), np.percentile(crMinimizer, 95))
+    print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
+    print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
+    print("greedy: ", np.mean(crGreedy), np.percentile(crGreedy, 95))
+    print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
     print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)

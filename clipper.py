@@ -286,9 +286,18 @@ def clipHelper(cost_func, accepted, gamma, L, U, D, tau, prev, w, dist_matrix, s
         target = a_t
 
     robust_constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x <= (1-accepted)]
-    rob_prob = cp.Problem(cp.Minimize(clipperMinimization(x_bar, cost_func, gamma, U, L, D, tau, prev, accepted, w, phi, scale, c)), robust_constraints)
-    rob_prob.solve(solver=cp.CLARABEL)
-    rob_target = x_bar.value
+    try:
+        rob_prob = cp.Problem(cp.Minimize(clipperMinimization(x_bar, cost_func, gamma, U, L, D, tau, prev, rob_accepted, w, phi, scale, c)), robust_constraints)
+        rob_prob.solve(solver=cp.CLARABEL)
+        rob_target = x_bar.value
+    except cp.error.SolverError:
+        # if solve fails, set rob_target to nearest OFF state
+        rob_target = np.zeros(dim)
+        for j in range(dim):
+            if c[j] > 0:
+                rob_target[j+1] += prev[j]
+            else:
+                rob_target[j] += prev[j]
 
     if adv_prob.status == 'optimal':
         # compute optimal transport using ot library
