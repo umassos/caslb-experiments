@@ -80,7 +80,7 @@ def experiment(subset):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 15
+    epochs = 1500
 
     opts = []
     pcms = []
@@ -266,7 +266,7 @@ if __name__ == "__main__":
     crossingsSubset = ["us-east-1", "us-west-2",  "af-south-1",  "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1" ]
     noHydroSubset = ["us-east-1", "us-west-1", "us-west-2",  "af-south-1", "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "eu-west-3", "sa-east-1", "il-central-1" ]
     subsets = [(GDPRsubset, "GDPR"), (NAsubset, "NA"), (crossingsSubset, "crossings"), (noHydroSubset, "noHydro")]
-    for i in range(5, 12):
+    for i in range(5, 11):
         # choose a number of regions (random number between 5 and 14)
         numregions = random.randint(5, 14)
         subsets.append((random.sample(originalNames, numregions), "random{}".format(i)))

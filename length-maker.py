@@ -108,7 +108,7 @@ def experiment(job_length):
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
-        T = np.random.randint(max(12, job_length*2), 60)
+        T = np.random.randint(max(12, job_length*2), 48)
 
         # randomly choose an index from datetimes, and make sure there are at least T days including/after that index
         index = np.random.randint(0, len(datetimes) - T)
@@ -248,7 +248,7 @@ def experiment(job_length):
 
 # use multiprocessing here
 if __name__ == "__main__":
-    lengths = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+    lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     with Pool(10) as p:
         p.map(experiment, lengths)
 
