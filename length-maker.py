@@ -82,7 +82,7 @@ def experiment(job_length):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 15
+    epochs = 1500
 
     opts = []
     pcms = []
