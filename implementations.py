@@ -103,32 +103,33 @@ def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau
     return cost
 
 # new clipObjectiveSimplex -- no optimization
-def objectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_state, cpy=True):
+def objectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_state, cpy=True, debug=False):
     # get the optimal transport values using the OT library
-    cost = 0.0
+    hitCost = 0.0
+    switchCost = 0.0
     for (i, cost_func) in enumerate(vals):
-        if cpy:
-            cost += (cost_func @ vars[i])
-        else:
-            cost += np.dot(cost_func, vars[i])
+        hitCost += (cost_func @ vars[i])
     for i in range(len(vals)):
         if i == 0:
             # normalize the start state and vars[i]
             start_emd = np.array(start_state) / np.sum(start_state)
             varsi_emd = np.array(vars[i]) / np.sum(vars[i])
-            cost += ot.emd2(start_emd, varsi_emd, dist_matrix) * scale
+            switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix) * scale
         else:
             # normalize vars
             varsi_emd = np.array(vars[i]) / np.sum(vars[i])
             varsi1_emd = np.array(vars[i-1]) / np.sum(vars[i-1])
             try:
-                cost += ot.emd2(varsi_emd, varsi1_emd, dist_matrix) * scale
+                switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix) * scale
             except:
                 print("Opt trans failed")
                 print(vars[i-1])
                 print(vars[i])
-    cost += (c.T @ vars[-1]) * tau
-    return cost
+    switchCost += (c.T @ vars[-1]) * tau
+    if not debug:
+        return hitCost + switchCost
+    else:
+        return hitCost, switchCost
 
 # objectiveFunctionDiscrete computes the minimization objective for CASLB 
 # @jit

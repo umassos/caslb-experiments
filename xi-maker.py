@@ -83,12 +83,14 @@ def experiment(xi):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1
+    epochs = 1500
 
     opts = []
     pcms = []
     clip0s = []
     clip2s = []
+    clip5s = []
+    clip10s = []
     agnostics = []
     constThresholds = []
     greedys = []
@@ -98,11 +100,13 @@ def experiment(xi):
     cost_pcms = []
     cost_clip0s = []
     cost_clip2s = []
+    cost_clip5s = []
+    cost_clip10s = []
     cost_agnostics = []
     cost_constThresholds = []
     cost_greedys = []
 
-
+    issue = False
     # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
     for _ in range(epochs):
@@ -138,9 +142,9 @@ def experiment(xi):
             # solve for the optimal solution using cvxpy
             sol, solCost = f.optimalSolution(simplexSequence, simplex_distances, tau*scale, scale, c_simplex, dim, start_simplex)
             x_opt = sol.reshape((T, dim))
-            print("sol decisions: {}".format(np.array(sol)))
-            print(( sol @ c_simplex.T) )
-            print("solCost: {}".format(solCost))
+            # print("sol decisions: {}".format(np.array(sol)))
+            # print(( sol @ c_simplex.T) )
+            # print("solCost: {}".format(solCost))
             
             # print(x_opt)
             # print(solCost)
@@ -177,24 +181,73 @@ def experiment(xi):
             greed, greedCost = f.greedy(simplexSequence, weights, scale, c_simplex, job_length, dim, tau, simplex_distances, start_simplex)
 
             #################################### get the online CLIP solution
-            epsilon = 0
+            epsilon = 0.1
             clip0, clip0Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
 
             epsilon = 2
             clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
-            print("clip2 decisions: {}".format(clip2))
-            print("clip2 cost: {}".format(clip2Cost))
 
-            # epsilon = 5
-            # clip5, clip5Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
+            # if xi = 0, check that the clip2 cost is no more than 3* the optimal cost
+            if xi == 0:
+                assert clip2Cost <= 3*solCost
 
-            # epsilon = 10
-            # clip10, clip10Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
+            epsilon = 5
+            clip5, clip5Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
+
+            epsilon = 10
+            clip10, clip10Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
 
         except Exception as e:
             # if anything goes wrong, it's probably a numerical error, but skip this instance and move on.
             # print the details of the exception
+            issue = True
             print(traceback.format_exception(*sys.exc_info()))
+            solHitSoFar = 0.0
+            clipHitSoFar = 0.0
+            solAccepted = 0.0
+            solSwitchSoFar = 0.0
+            clipSwitchSoFar = 0.0
+            for (i, cost_func) in enumerate(simplexSequence):
+                print("i: {}".format(i))
+                solHitSoFar += cost_func @ sol[i]
+                solAccepted += c_simplex.T @ sol[i]
+                clipHitSoFar += cost_func @ clip2[i]
+                if i == 0:
+                    start_emd = np.array(start_simplex) / np.sum(start_simplex)
+                    soli_emd = np.array(sol[i]) / np.sum(sol[i])
+                    clipi_emd = np.array(clip2[i]) / np.sum(clip2[i])
+                    solSwitchSoFar += ot.emd2(start_emd, soli_emd, simplex_distances) * scale
+                    clipSwitchSoFar += ot.emd2(start_emd, clipi_emd, simplex_distances) * scale
+                else:
+                    soli_emd = np.array(sol[i]) / np.sum(sol[i])
+                    soli1_emd = np.array(sol[i-1]) / np.sum(sol[i-1])
+                    clipi_emd = np.array(clip2[i]) / np.sum(clip2[i])
+                    clipi1_emd = np.array(clip2[i-1]) / np.sum(clip2[i-1])
+                    solSwitchSoFar += ot.emd2(soli1_emd, soli_emd, simplex_distances) * scale
+                    clipSwitchSoFar += ot.emd2(clipi1_emd, clipi_emd, simplex_distances) * scale
+                if i == len(simplexSequence) - 1:
+                    print("last time step!")
+                    solSwitchSoFar += (c_simplex.T @ sol[i]) * tau*scale
+                    clipSwitchSoFar += (c_simplex.T @ clip2[i]) * tau*scale
+                hypotheticalSol = (solHitSoFar+solSwitchSoFar) + (1 - solAccepted) * Lc
+                print("solSoFar: {}".format((solHitSoFar+solSwitchSoFar)))
+                print("hypotheticalSol: {}".format(hypotheticalSol))
+                print("clipSoFar: {}".format(clipHitSoFar+clipSwitchSoFar))
+                if solHitSoFar + solSwitchSoFar > 0:
+                    print("clip/sol so far: {}".format((clipHitSoFar+clipSwitchSoFar)/(solHitSoFar + solSwitchSoFar)))
+                print("clip/hypotheticalSol: {}".format((clipHitSoFar+clipSwitchSoFar)/hypotheticalSol))
+                print("")
+            print("length: {}".format(len(simplexSequence)))
+            solHit, solSwitch = f.objectiveSimplexNoOpt(sol, simplexSequence, simplex_distances, scale, dim, c_simplex, tau*scale, start_simplex, cpy=False, debug=True)
+            clipHit, clipSwitch = f.objectiveSimplexNoOpt(clip2, simplexSequence, simplex_distances, scale, dim, c_simplex, tau*scale, start_simplex, cpy=False, debug=True)
+            print("final Sol hit: {}".format(solHit))
+            print("running Sol hit: {}".format(solHitSoFar))
+            print("final Sol switch: {}".format(solSwitch))
+            print("running Sol switch: {}".format(solSwitchSoFar))
+            print("final Clip hit: {}".format(clipHit))
+            print("running Clip hit: {}".format(clipHitSoFar))
+            print("final Clip switch: {}".format(clipSwitch))
+            print("running Clip switch: {}".format(clipSwitchSoFar))
             continue
 
         opts.append(sol)
@@ -204,6 +257,8 @@ def experiment(xi):
         greedys.append(greed)
         clip0s.append(clip0)
         clip2s.append(clip2)
+        clip5s.append(clip5)
+        clip10s.append(clip10)
 
         cost_opts.append(solCost)
         cost_pcms.append(pcmCost)
@@ -212,6 +267,8 @@ def experiment(xi):
         cost_greedys.append(greedCost)
         cost_clip0s.append(clip0Cost)
         cost_clip2s.append(clip2Cost)
+        cost_clip5s.append(clip5Cost)
+        cost_clip10s.append(clip10Cost)
 
 
     # compute competitive ratios
@@ -222,6 +279,8 @@ def experiment(xi):
     cost_greedys = np.array(cost_greedys)
     cost_clip0s = np.array(cost_clip0s)
     cost_clip2s = np.array(cost_clip2s)
+    cost_clip5s = np.array(cost_clip5s)
+    cost_clip10s = np.array(cost_clip10s)
     # cost_baseline2s = np.array(cost_baseline2s)
 
     crPCM = cost_pcms/cost_opts
@@ -230,14 +289,15 @@ def experiment(xi):
     crGreedy = cost_greedys/cost_opts
     crClip0 = cost_clip0s/cost_opts
     crClip2 = cost_clip2s/cost_opts
-    # crBaseline2 = cost_baseline2s/cost_opts
+    crClip5 = cost_clip5s/cost_opts
+    crClip10 = cost_clip10s/cost_opts
 
     # save the results (use a dictionary)
     results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "clip0s": clip0s, "clip2s": clip2s, 
                "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("gb/gb_results{}.pickle".format(setGB), "wb") as f:
+    with open("xi/xi_results{}.pickle".format(xi*100), "wb") as f:
         pickle.dump(results, f)
 
 
@@ -250,6 +310,10 @@ def experiment(xi):
     print("greedy: ", np.mean(crGreedy), np.percentile(crGreedy, 95))
     print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
     print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
+    print("clip5: ", np.mean(crClip5), np.percentile(crClip5, 95))
+    print("clip10: ", np.mean(crClip10), np.percentile(crClip10, 95))
+    if issue:
+        print("There was an issue with this run.")
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)
 
@@ -257,8 +321,8 @@ def experiment(xi):
 
 # use multiprocessing here
 if __name__ == "__main__":
-    xis = [0.0]
-    with Pool(1) as p:
+    xis = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6]
+    with Pool(10) as p:
         p.map(experiment, xis)
 
 # if __name__ == "__main__":

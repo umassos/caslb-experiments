@@ -88,10 +88,7 @@ def clipObjectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start
     # get the optimal transport values using the OT library
     cost = 0.0
     for (i, cost_func) in enumerate(vals):
-        if cpy:
-            cost += (cost_func @ vars[i])
-        else:
-            cost += np.dot(cost_func, vars[i])
+        cost += (cost_func @ vars[i])
     for i in range(len(vals)):
         if i == 0:
             # normalize the start state and vars[i]
@@ -103,7 +100,7 @@ def clipObjectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start
             varsi_emd = np.array(vars[i]) / np.sum(vars[i])
             varsi1_emd = np.array(vars[i-1]) / np.sum(vars[i-1])
             try:
-                cost += ot.emd2(varsi_emd, varsi1_emd, dist_matrix) * scale
+                cost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix) * scale
             except:
                 print("Opt trans failed")
                 print(vars[i-1])
@@ -183,7 +180,7 @@ def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamm
         a = adv[i]
         a_gamma_ot = adv_gamma_ots[i]
         adv_accepted += c.T @ a
-        adv_so_far += (cost_func @ a) + (np.trace(a_gamma_ot.T*dist_matrix) * scale * 0.95)
+        adv_so_far += (cost_func @ a) + (np.trace(a_gamma_ot.T*dist_matrix) * scale)
         if i == len(adv)-1:
             adv_so_far += (c.T @ a) * tau
         
@@ -230,7 +227,7 @@ def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamm
         prev = start
         if i != 0:
             prev = sol[i-1]
-        advice_t = (1+epsilon) * (adv_so_far + (1 - adv_accepted)*L) #+ (c.T @ a)*tau
+        advice_t = (1+epsilon) * (adv_so_far + (1 - adv_accepted)*(L/2)) #+ (c.T @ a)*tau
         x_t, gamma_ot, barx_t = clipHelper(cost_func, accepted, gamma, L, U, D, tau, prev, w, dist_matrix, scale, c, phi, dim, cost_so_far, advice_t, a, adv_accepted, rob_accepted)
 
         if gamma_ot is None:
@@ -248,7 +245,7 @@ def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamm
             print(dist_matrix)
 
         accepted += c.T @ x_t
-        rob_accepted += min( (c.T @ barx_t), (c.T @ x_t) )
+        rob_accepted += 0.5*(c.T @ barx_t) + 0.5*(c.T @ x_t)
         sol.append(x_t)
         gamma_ots.append(gamma_ot)
 
@@ -283,7 +280,14 @@ def clipHelper(cost_func, accepted, gamma, L, U, D, tau, prev, w, dist_matrix, s
         adv_prob.solve(solver=cp.CLARABEL)
         target = x.value
     except cp.error.SolverError:
-        target = a_t
+        if c.T @ a_t > 1-accepted:
+            target = np.zeros(dim)
+            for j in range(dim):
+                if c[j] > 0:
+                    target[j] = (1-accepted) * a_t[j]
+                    target[j+1] += (a_t[j] + a_t[j+1]) - target[j]
+        else:
+            target = a_t
 
     robust_constraints = [0 <= x, x <= 1, cp.sum(x) == 1, c.T @ x <= (1-accepted)]
     try:
