@@ -170,7 +170,7 @@ def experiment(GB):
             greed, greedCost = f.greedy(simplexSequence, weights, scale, c_simplex, job_length, dim, tau, simplex_distances, start_simplex)
 
             #################################### get the online CLIP solution
-            epsilon = 0
+            epsilon = 0.1
             clip0, clip0Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
 
             epsilon = 2
