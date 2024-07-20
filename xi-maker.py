@@ -106,7 +106,6 @@ def experiment(xi):
     cost_constThresholds = []
     cost_greedys = []
 
-    issue = False
     # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
     for _ in range(epochs):
@@ -200,54 +199,53 @@ def experiment(xi):
         except Exception as e:
             # if anything goes wrong, it's probably a numerical error, but skip this instance and move on.
             # print the details of the exception
-            issue = True
             print(traceback.format_exception(*sys.exc_info()))
-            solHitSoFar = 0.0
-            clipHitSoFar = 0.0
-            solAccepted = 0.0
-            solSwitchSoFar = 0.0
-            clipSwitchSoFar = 0.0
-            for (i, cost_func) in enumerate(simplexSequence):
-                print("i: {}".format(i))
-                solHitSoFar += cost_func @ sol[i]
-                solAccepted += c_simplex.T @ sol[i]
-                clipHitSoFar += cost_func @ clip2[i]
-                if i == 0:
-                    start_emd = np.array(start_simplex) / np.sum(start_simplex)
-                    soli_emd = np.array(sol[i]) / np.sum(sol[i])
-                    clipi_emd = np.array(clip2[i]) / np.sum(clip2[i])
-                    solSwitchSoFar += ot.emd2(start_emd, soli_emd, simplex_distances) * scale
-                    clipSwitchSoFar += ot.emd2(start_emd, clipi_emd, simplex_distances) * scale
-                else:
-                    soli_emd = np.array(sol[i]) / np.sum(sol[i])
-                    soli1_emd = np.array(sol[i-1]) / np.sum(sol[i-1])
-                    clipi_emd = np.array(clip2[i]) / np.sum(clip2[i])
-                    clipi1_emd = np.array(clip2[i-1]) / np.sum(clip2[i-1])
-                    solSwitchSoFar += ot.emd2(soli1_emd, soli_emd, simplex_distances) * scale
-                    clipSwitchSoFar += ot.emd2(clipi1_emd, clipi_emd, simplex_distances) * scale
-                if i == len(simplexSequence) - 1:
-                    print("last time step!")
-                    solSwitchSoFar += (c_simplex.T @ sol[i]) * tau*scale
-                    clipSwitchSoFar += (c_simplex.T @ clip2[i]) * tau*scale
-                hypotheticalSol = (solHitSoFar+solSwitchSoFar) + (1 - solAccepted) * Lc
-                print("solSoFar: {}".format((solHitSoFar+solSwitchSoFar)))
-                print("hypotheticalSol: {}".format(hypotheticalSol))
-                print("clipSoFar: {}".format(clipHitSoFar+clipSwitchSoFar))
-                if solHitSoFar + solSwitchSoFar > 0:
-                    print("clip/sol so far: {}".format((clipHitSoFar+clipSwitchSoFar)/(solHitSoFar + solSwitchSoFar)))
-                print("clip/hypotheticalSol: {}".format((clipHitSoFar+clipSwitchSoFar)/hypotheticalSol))
-                print("")
-            print("length: {}".format(len(simplexSequence)))
-            solHit, solSwitch = f.objectiveSimplexNoOpt(sol, simplexSequence, simplex_distances, scale, dim, c_simplex, tau*scale, start_simplex, cpy=False, debug=True)
-            clipHit, clipSwitch = f.objectiveSimplexNoOpt(clip2, simplexSequence, simplex_distances, scale, dim, c_simplex, tau*scale, start_simplex, cpy=False, debug=True)
-            print("final Sol hit: {}".format(solHit))
-            print("running Sol hit: {}".format(solHitSoFar))
-            print("final Sol switch: {}".format(solSwitch))
-            print("running Sol switch: {}".format(solSwitchSoFar))
-            print("final Clip hit: {}".format(clipHit))
-            print("running Clip hit: {}".format(clipHitSoFar))
-            print("final Clip switch: {}".format(clipSwitch))
-            print("running Clip switch: {}".format(clipSwitchSoFar))
+            # solHitSoFar = 0.0
+            # clipHitSoFar = 0.0
+            # solAccepted = 0.0
+            # solSwitchSoFar = 0.0
+            # clipSwitchSoFar = 0.0
+            # for (i, cost_func) in enumerate(simplexSequence):
+            #     print("i: {}".format(i))
+            #     solHitSoFar += cost_func @ sol[i]
+            #     solAccepted += c_simplex.T @ sol[i]
+            #     clipHitSoFar += cost_func @ clip2[i]
+            #     if i == 0:
+            #         start_emd = np.array(start_simplex) / np.sum(start_simplex)
+            #         soli_emd = np.array(sol[i]) / np.sum(sol[i])
+            #         clipi_emd = np.array(clip2[i]) / np.sum(clip2[i])
+            #         solSwitchSoFar += ot.emd2(start_emd, soli_emd, simplex_distances) * scale
+            #         clipSwitchSoFar += ot.emd2(start_emd, clipi_emd, simplex_distances) * scale
+            #     else:
+            #         soli_emd = np.array(sol[i]) / np.sum(sol[i])
+            #         soli1_emd = np.array(sol[i-1]) / np.sum(sol[i-1])
+            #         clipi_emd = np.array(clip2[i]) / np.sum(clip2[i])
+            #         clipi1_emd = np.array(clip2[i-1]) / np.sum(clip2[i-1])
+            #         solSwitchSoFar += ot.emd2(soli1_emd, soli_emd, simplex_distances) * scale
+            #         clipSwitchSoFar += ot.emd2(clipi1_emd, clipi_emd, simplex_distances) * scale
+            #     if i == len(simplexSequence) - 1:
+            #         print("last time step!")
+            #         solSwitchSoFar += (c_simplex.T @ sol[i]) * tau*scale
+            #         clipSwitchSoFar += (c_simplex.T @ clip2[i]) * tau*scale
+            #     hypotheticalSol = (solHitSoFar+solSwitchSoFar) + (1 - solAccepted) * Lc
+            #     print("solSoFar: {}".format((solHitSoFar+solSwitchSoFar)))
+            #     print("hypotheticalSol: {}".format(hypotheticalSol))
+            #     print("clipSoFar: {}".format(clipHitSoFar+clipSwitchSoFar))
+            #     if solHitSoFar + solSwitchSoFar > 0:
+            #         print("clip/sol so far: {}".format((clipHitSoFar+clipSwitchSoFar)/(solHitSoFar + solSwitchSoFar)))
+            #     print("clip/hypotheticalSol: {}".format((clipHitSoFar+clipSwitchSoFar)/hypotheticalSol))
+            #     print("")
+            # print("length: {}".format(len(simplexSequence)))
+            # solHit, solSwitch = f.objectiveSimplexNoOpt(sol, simplexSequence, simplex_distances, scale, dim, c_simplex, tau*scale, start_simplex, cpy=False, debug=True)
+            # clipHit, clipSwitch = f.objectiveSimplexNoOpt(clip2, simplexSequence, simplex_distances, scale, dim, c_simplex, tau*scale, start_simplex, cpy=False, debug=True)
+            # print("final Sol hit: {}".format(solHit))
+            # print("running Sol hit: {}".format(solHitSoFar))
+            # print("final Sol switch: {}".format(solSwitch))
+            # print("running Sol switch: {}".format(solSwitchSoFar))
+            # print("final Clip hit: {}".format(clipHit))
+            # print("running Clip hit: {}".format(clipHitSoFar))
+            # print("final Clip switch: {}".format(clipSwitch))
+            # print("running Clip switch: {}".format(clipSwitchSoFar))
             continue
 
         opts.append(sol)
@@ -312,8 +310,6 @@ def experiment(xi):
     print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
     print("clip5: ", np.mean(crClip5), np.percentile(crClip5, 95))
     print("clip10: ", np.mean(crClip10), np.percentile(crClip10, 95))
-    if issue:
-        print("There was an issue with this run.")
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)
 
