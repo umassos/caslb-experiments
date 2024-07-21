@@ -86,6 +86,7 @@ def experiment(xi):
     epochs = 1500
 
     opts = []
+    advs = []
     pcms = []
     clip0s = []
     clip2s = []
@@ -97,6 +98,7 @@ def experiment(xi):
 
 
     cost_opts = []
+    cost_advs = []
     cost_pcms = []
     cost_clip0s = []
     cost_clip2s = []
@@ -249,6 +251,7 @@ def experiment(xi):
             continue
 
         opts.append(sol)
+        advs.append(adv)
         pcms.append(pcm)
         agnostics.append(agn)
         constThresholds.append(const)
@@ -259,6 +262,7 @@ def experiment(xi):
         clip10s.append(clip10)
 
         cost_opts.append(solCost)
+        cost_advs.append(badCost)
         cost_pcms.append(pcmCost)
         cost_agnostics.append(agnCost)
         cost_constThresholds.append(constCost)
@@ -271,6 +275,7 @@ def experiment(xi):
 
     # compute competitive ratios
     cost_opts = np.array(cost_opts)
+    cost_advs = np.array(cost_advs)
     cost_pcms = np.array(cost_pcms)
     cost_agnostics = np.array(cost_agnostics)
     cost_constThresholds = np.array(cost_constThresholds)
@@ -291,8 +296,8 @@ def experiment(xi):
     crClip10 = cost_clip10s/cost_opts
 
     # save the results (use a dictionary)
-    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "clip0s": clip0s, "clip2s": clip2s, 
-               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
+    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "clip0s": clip0s, "clip2s": clip2s, "clip5s": clip5s, "clip10s": clip10s, "advs": advs,
+               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s, "cost_clip5s": cost_clip5s, "cost_clip10s": cost_clip10s, "cost_advs": cost_advs}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
     with open("xi/xi_results{}.pickle".format(xi*100), "wb") as f:
