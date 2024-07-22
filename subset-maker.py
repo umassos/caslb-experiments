@@ -36,7 +36,7 @@ def experiment(subset):
     subset_names, subset_header = subset
 
     # gigabytes of data that need to be "transferred" (i.e. the diameter of the metric space)
-    setGB = 2 # float(sys.argv[1])
+    setGB = 4 # float(sys.argv[1])
 
     # scale factor for metric space
     eastToWest = 221.0427046263345 # milliseconds
@@ -80,7 +80,7 @@ def experiment(subset):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 100
+    epochs = 1500
 
     opts = []
     pcms = []
@@ -167,11 +167,11 @@ def experiment(subset):
             greed, greedCost = f.greedy(simplexSequence, weights, scale, c_simplex, job_length, dim, tau, simplex_distances, start_simplex)
 
             #################################### get the online CLIP solution
-            epsilon = 0.1
-            clip0, clip0Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
+            # epsilon = 0.1
+            # clip0, clip0Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
 
-            epsilon = 2
-            clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
+            # epsilon = 2
+            # clip2, clip2Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
 
             # epsilon = 5
             # clip5, clip5Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
@@ -190,16 +190,16 @@ def experiment(subset):
         agnostics.append(agn)
         constThresholds.append(const)
         greedys.append(greed)
-        clip0s.append(clip0)
-        clip2s.append(clip2)
+        # clip0s.append(clip0)
+        # clip2s.append(clip2)
 
         cost_opts.append(solCost)
         cost_pcms.append(pcmCost)
         cost_agnostics.append(agnCost)
         cost_constThresholds.append(constCost)
         cost_greedys.append(greedCost)
-        cost_clip0s.append(clip0Cost)
-        cost_clip2s.append(clip2Cost)
+        # cost_clip0s.append(clip0Cost)
+        # cost_clip2s.append(clip2Cost)
 
 
     # compute competitive ratios
@@ -208,21 +208,21 @@ def experiment(subset):
     cost_agnostics = np.array(cost_agnostics)
     cost_constThresholds = np.array(cost_constThresholds)
     cost_greedys = np.array(cost_greedys)
-    cost_clip0s = np.array(cost_clip0s)
-    cost_clip2s = np.array(cost_clip2s)
+    # cost_clip0s = np.array(cost_clip0s)
+    # cost_clip2s = np.array(cost_clip2s)
     # cost_baseline2s = np.array(cost_baseline2s)
 
     crPCM = cost_pcms/cost_opts
     crAgnostic = cost_agnostics/cost_opts
     crConstThreshold = cost_constThresholds/cost_opts
     crGreedy = cost_greedys/cost_opts
-    crClip0 = cost_clip0s/cost_opts
-    crClip2 = cost_clip2s/cost_opts
+    # crClip0 = cost_clip0s/cost_opts
+    # crClip2 = cost_clip2s/cost_opts
     # crBaseline2 = cost_baseline2s/cost_opts
 
     # save the results (use a dictionary)
-    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "clip0s": clip0s, "clip2s": clip2s, 
-               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
+    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, # "clip0s": clip0s, "clip2s": clip2s, 
+               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys}#, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
     # with open("subset/subset_{}.pickle".format(subset_header), "wb") as f:
@@ -238,8 +238,8 @@ def experiment(subset):
         print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
         print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
         print("greedy: ", np.mean(crGreedy), np.percentile(crGreedy, 95))
-        print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
-        print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
+        # print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
+        # print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)
 
@@ -268,11 +268,26 @@ if __name__ == "__main__":
     crossingsSubset = ["us-east-1", "us-west-2",  "af-south-1",  "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1" ]
     crossings2Subset = [ "us-east-1", "us-west-1", "us-west-2", "af-south-1", "ap-south-2", "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1"]
     noHydroSubset = ["us-east-1", "us-west-1", "us-west-2",  "af-south-1", "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "eu-west-3", "sa-east-1", "il-central-1" ]
-    candidateSubset = ['af-south-1', 'us-east-1', 'us-west-2', 'us-west-1', 'ap-northeast-2', 'eu-west-3']
-    subsets = [(GDPRsubset, "GDPR"), (NAsubset, "NA"), (candidateSubset, "crossings"), (noHydroSubset, "noHydro")]
-    for i in range(5, 21):
+    
+    candidateSubset = ['af-south-1', 'us-east-1', 'us-west-2', 'us-west-1', 'ap-northeast-2', 'eu-west-3'] # twice!
+    candidate2Subset = ['sa-east-1', 'eu-west-3', 'us-west-2', 'ap-south-2', 'ap-southeast-2'] # three times good margin
+    candidate3Subset = ['us-west-1', 'ap-northeast-2', 'eu-central-1', 'ap-south-2', 'il-central-1', 'eu-north-1', 'af-south-1'] # twice!
+    candidate4Subset = ['ca-central-1', 'ap-southeast-2', 'af-south-1', 'il-central-1', 'ap-south-2'] # twice!
+    candidate5Subset = ['ap-northeast-2', 'il-central-1', 'af-south-1', 'eu-west-3', 'us-west-2'] # twice, bad margin
+    candidate6Subset = ['us-west-1', 'eu-west-3', 'eu-north-1', 'us-west-2', 'il-central-1']
+    candidate7Subset = ['us-west-1', 'eu-central-1', 'ap-south-2', 'eu-west-3', 'eu-north-1', 'ap-southeast-2'] # twice!
+    candidate8Subset = ['ap-southeast-2', 'us-west-2', 'eu-central-1', 'ca-central-1', 'il-central-1', 'ap-northeast-2'] # twice!
+    candidate9Subset = ['eu-central-1', 'ap-northeast-2', 'eu-west-2', 'us-west-1', 'ca-central-1', 'ap-southeast-2', 'ap-south-2']
+    candidate10Subset = ['us-west-1', 'eu-west-2', 'ap-south-2', 'ap-northeast-2', 'us-east-1', 'eu-north-1']
+    candidate11Subset = ['ap-northeast-2', 'us-east-1', 'ap-southeast-2', 'ca-central-1', 'eu-west-3'] # twice good margin
+    candidate12Subset = ['il-central-1', 'us-west-1', 'sa-east-1', 'af-south-1', 'eu-west-2', 'eu-west-3', 'us-east-1']
+    candidate13Subset = ['eu-west-3', 'ca-central-1', 'us-east-1', 'il-central-1', 'ap-northeast-2', 'sa-east-1', 'ap-southeast-2']
+    
+    #subsets = [(GDPRsubset, "GDPR"), (NAsubset, "NA"), (candidate2Subset, "crossings"), (noHydroSubset, "noHydro")]
+    subsets = [(candidateSubset, "candidate1"), (candidate2Subset, "candidate2"), (candidate3Subset, "candidate3"), (candidate4Subset, "candidate4"), (candidate5Subset, "candidate5"), (candidate6Subset, "candidate6"), (candidate7Subset, "candidate7"), (candidate8Subset, "candidate8"), (candidate9Subset, "candidate9"), (candidate10Subset, "candidate10"), (candidate11Subset, "candidate11"), (candidate12Subset, "candidate12"), (candidate13Subset, "candidate13")]
+    for i in range(5, 11):
         # choose a number of regions (random number between 5 and 14)
-        numregions = random.randint(5, 10)
+        numregions = random.randint(6, 10)
         subsets.append((random.sample(originalNames, numregions), "random{}".format(i)))
 
     with Pool(10) as p:
