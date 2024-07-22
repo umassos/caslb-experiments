@@ -122,7 +122,7 @@ def experiment(subset):
 
         if D > (Uc - Lc):
             print("D too large!")
-            exit(1)
+            break
         
         # pick a random name out of the subset of names
         start_state = np.random.randint(0, len(names))
@@ -201,6 +201,9 @@ def experiment(subset):
         cost_clip0s.append(clip0Cost)
         cost_clip2s.append(clip2Cost)
 
+    if len(opts) == 0:
+        print("D too large. Skipping.")
+        return
 
     # compute competitive ratios
     cost_opts = np.array(cost_opts)
