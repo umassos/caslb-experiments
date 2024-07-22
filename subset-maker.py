@@ -36,7 +36,7 @@ def experiment(subset):
     subset_names, subset_header = subset
 
     # gigabytes of data that need to be "transferred" (i.e. the diameter of the metric space)
-    setGB = 4 # float(sys.argv[1])
+    setGB = 2 # float(sys.argv[1])
 
     # scale factor for metric space
     eastToWest = 221.0427046263345 # milliseconds
@@ -46,7 +46,7 @@ def experiment(subset):
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
-    job_length = 4
+    job_length = 1
 
     # get tau from cmd args
     tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
@@ -80,7 +80,7 @@ def experiment(subset):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 100
 
     opts = []
     pcms = []
@@ -225,19 +225,21 @@ def experiment(subset):
                "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("subset/subset_{}.pickle".format(subset_header), "wb") as f:
-        pickle.dump(results, f)
+    # with open("subset/subset_{}.pickle".format(subset_header), "wb") as f:
+    #     pickle.dump(results, f)
 
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
     print("Simulated Subset: {}".format(subset_names))
-    print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
-    print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
-    print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
-    print("greedy: ", np.mean(crGreedy), np.percentile(crGreedy, 95))
-    print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
-    print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
+    if np.mean(crPCM) < np.mean(crGreedy):
+        #if np.percentile(crPCM, 95) < np.percentile(crGreedy, 95):
+        print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
+        print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
+        print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
+        print("greedy: ", np.mean(crGreedy), np.percentile(crGreedy, 95))
+        print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
+        print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)
 
@@ -262,13 +264,15 @@ if __name__ == "__main__":
         "il-central-1"    # Israel (Tel Aviv)
     ]
     GDPRsubset = [ "eu-central-1", "eu-west-2", "eu-west-3",  "eu-north-1" ]
-    NAsubset = [ "us-east-1", "us-west-1", "us-west-2", "ca-central-1" ]
+    NAsubset = ['us-east-1', 'us-west-1', 'us-west-2', 'ca-central-1']
     crossingsSubset = ["us-east-1", "us-west-2",  "af-south-1",  "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1" ]
+    crossings2Subset = [ "us-east-1", "us-west-1", "us-west-2", "af-south-1", "ap-south-2", "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1"]
     noHydroSubset = ["us-east-1", "us-west-1", "us-west-2",  "af-south-1", "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "eu-west-3", "sa-east-1", "il-central-1" ]
-    subsets = [(GDPRsubset, "GDPR"), (NAsubset, "NA"), (crossingsSubset, "crossings"), (noHydroSubset, "noHydro")]
-    for i in range(5, 11):
+    candidateSubset = ['af-south-1', 'us-east-1', 'us-west-2', 'us-west-1', 'ap-northeast-2', 'eu-west-3']
+    subsets = [(GDPRsubset, "GDPR"), (NAsubset, "NA"), (candidateSubset, "crossings"), (noHydroSubset, "noHydro")]
+    for i in range(5, 21):
         # choose a number of regions (random number between 5 and 14)
-        numregions = random.randint(5, 14)
+        numregions = random.randint(5, 10)
         subsets.append((random.sample(originalNames, numregions), "random{}".format(i)))
 
     with Pool(10) as p:
