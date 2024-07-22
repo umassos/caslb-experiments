@@ -272,7 +272,7 @@ if __name__ == "__main__":
     subsets = [(GDPRsubset, "GDPR"), (NAsubset, "NA"), (candidateSubset, "crossings"), (noHydroSubset, "noHydro")]
     for i in range(5, 21):
         # choose a number of regions (random number between 5 and 14)
-        numregions = random.randint(5, 14)
+        numregions = random.randint(5, 10)
         subsets.append((random.sample(originalNames, numregions), "random{}".format(i)))
 
     with Pool(10) as p:

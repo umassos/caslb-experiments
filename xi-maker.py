@@ -161,7 +161,8 @@ def experiment(xi):
                     gamma = ot.emd(start_simplex, np.array(adv[i]), simplex_distances)
                     adv_ots.append(gamma)
                 gamma = ot.emd(np.array(adv[i-1]), np.array(adv[i]), simplex_distances)
-                adv_ots.append(gamma)
+                adv_ots.append(gamma) 
+            adv_cost = f.objectiveSimplexNoOpt(adv, simplexSequence, simplex_distances, scale, dim, c_simplex, tau*scale, start_simplex, cpy=False)
 
             #################################### get the online PCM solution
 
@@ -262,7 +263,7 @@ def experiment(xi):
         clip10s.append(clip10)
 
         cost_opts.append(solCost)
-        cost_advs.append(badCost)
+        cost_advs.append(adv_cost)
         cost_pcms.append(pcmCost)
         cost_agnostics.append(agnCost)
         cost_constThresholds.append(constCost)
