@@ -87,7 +87,7 @@ def objectiveFunctionTree(vars, vals, w, c, tau, scale, dim, start_state, phi, c
     return cost
 
 # objectiveFunctionSimplex computes the minimization objective for CASLB on the simplex, using the wasserstein1 distance
-def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, cpy=False):
+def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau, time_varying=False, cpy=False):
     cost = 0.0
     for (i, cost_func) in enumerate(vals):
         if cpy:
@@ -95,15 +95,22 @@ def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau
         else:
             cost += np.dot(cost_func, vars[i])
     cost += (c.T @ vars[-1]) * tau
-    for gamma in gammas:
-        if cpy:
-            cost += cp.trace(gamma.T*dist_matrix) * scale
-        else:
-            cost += np.trace(gamma.T*dist_matrix) * scale
+    if not time_varying:
+        for gamma in gammas:
+            if cpy:
+                cost += cp.trace(gamma.T*dist_matrix) * scale
+            else:
+                cost += np.trace(gamma.T*dist_matrix) * scale
+    else:
+        for i, gamma in enumerate(gammas):
+            if cpy:
+                cost += cp.trace(gamma.T*dist_matrix[i]) * scale
+            else:
+                cost += np.trace(gamma.T*dist_matrix[i]) * scale
     return cost
 
 # new clipObjectiveSimplex -- no optimization
-def objectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_state, cpy=True, debug=False):
+def objectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_state, time_varying=False, cpy=True, debug=False):
     # get the optimal transport values using the OT library
     hitCost = 0.0
     switchCost = 0.0
@@ -114,13 +121,19 @@ def objectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_sta
             # normalize the start state and vars[i]
             start_emd = np.array(start_state) / np.sum(start_state)
             varsi_emd = np.array(vars[i]) / np.sum(vars[i])
-            switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix) * scale
+            if time_varying:
+                switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix[i]) * scale
+            else:
+                switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix) * scale
         else:
             # normalize vars
             varsi_emd = np.array(vars[i]) / np.sum(vars[i])
             varsi1_emd = np.array(vars[i-1]) / np.sum(vars[i-1])
             try:
-                switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix) * scale
+                if time_varying:
+                    switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix[i]) * scale
+                else:
+                    switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix) * scale
             except:
                 print("Opt trans failed")
                 print(vars[i-1])
@@ -168,7 +181,7 @@ def negativeObjectiveSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau
 
 # computing the optimal solution
 # @jitdef optimalSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state):
-def optimalSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state, alt_cost_functions=None):
+def optimalSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state, time_varying=False, alt_cost_functions=None):
     T = len(simplex_cost_functions)
     # declare variables
     x = cp.Variable((T, d))
@@ -196,15 +209,15 @@ def optimalSolution(simplex_cost_functions, dist_matrix, tau, scale, c_simplex, 
         else:
             constraints += [gammas[i] @ np.ones(d) == x[i-1]]
             constraints += [gammas[i].T @ np.ones(d) == x[i]] 
-    prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, c_simplex, tau, cpy=True)), constraints)
+    prob = cp.Problem(cp.Minimize(objectiveFunctionSimplex(x, gammas, simplex_cost_functions, dist_matrix, scale, d, c_simplex, tau, time_varying=time_varying, cpy=True)), constraints)
     prob.solve(solver=cp.ECOS_BB)
     # print("status:", prob.status)
     # print("optimal value", prob.value)
     # print("optimal var", x.value)
     if prob.status == 'optimal' or prob.status == 'optimal_inaccurate':
         if alt_cost_functions is not None:
-            return x.value, gammas, objectiveFunctionSimplex(x, gammas, alt_cost_functions, dist_matrix, scale, d, c_simplex, tau, cpy=True).value
-        return x.value, objectiveSimplexNoOpt(x.value, simplex_cost_functions, dist_matrix, scale, d, c_simplex, tau, start_state, cpy=False)
+            return x.value, gammas, objectiveSimplexNoOpt(x.value, alt_cost_functions, dist_matrix, scale, d, c_simplex, tau, start_state, time_varying=time_varying, cpy=True)
+        return x.value, objectiveSimplexNoOpt(x.value, simplex_cost_functions, dist_matrix, scale, d, c_simplex, tau, start_state, time_varying=time_varying, cpy=False)
     else:
         return x.value, 0.0
 
@@ -255,7 +268,7 @@ def singleObjective(x, cost_func, previous, phi, w, scale, start, cpy=True):
 # U                         -- U
 # D                         -- diameter of the metric
 # @jit
-def PCM(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, start):
+def PCM(vals, w, scale, c, job_length, phi_list, dim, L, U, D, tau, start, time_varying=False):
     sol = []
     accepted = 0.0
 
@@ -264,6 +277,10 @@ def PCM(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, start):
 
     #simulate behavior of online algorithm using a for loop
     for (i, cost_func) in enumerate(vals):
+        phi = phi_list
+        if time_varying:
+            phi = phi_list[i]
+
         if accepted >= 1:
             # check the previous solution
             previous = sol[i-1].copy()
@@ -348,7 +365,7 @@ def pcmMinimization(x, cost_func, eta, U, L, D, tau, previous, accepted, w, phi,
 # list of costs (values)    -- vals
 # switching cost weight     -- w
 # dimension                 -- dim
-def greedy(vals, w, scale, c, job_length, dim, tau, dist_matrix, start):
+def greedy(vals, w, scale, c, job_length, dim, tau, dist_matrix, start, time_varying=False):
     # choose a the minimum dimension at time 0 and ramp up there
     min_dim = np.argmin(vals[0][np.nonzero(vals[0])]) * 2
     remaining = 1.0
@@ -379,14 +396,14 @@ def greedy(vals, w, scale, c, job_length, dim, tau, dist_matrix, start):
     
     #objectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_state, cpy=True):
 
-    cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, cpy=False)
+    cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, time_varying=time_varying, cpy=False)
     return sol, cost
 
 # "agnostic" algorithm implementation
 # list of costs (values)    -- vals
 # switching cost weight     -- w
 # dimension                 -- dim
-def agnostic(vals, w, scale, c, job_length, dim, tau, dist_matrix, start):
+def agnostic(vals, w, scale, c, job_length, dim, tau, dist_matrix, start, time_varying=False):
     remaining = 1.0
     cost = 0.0
     
@@ -418,14 +435,14 @@ def agnostic(vals, w, scale, c, job_length, dim, tau, dist_matrix, start):
         sol.append(on_state)
         remaining = remaining - (c.T @ on_state)
 
-    cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, cpy=False)
+    cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, time_varying=time_varying, cpy=False)
     return sol, cost
 
 # "move to minimizer" algorithm implementation
 # list of costs (values)    -- vals
 # switching cost weight     -- w
 # dimension                 -- dim
-def moveMinimizer(vals, w, scale, c, job_length, dim, tau, dist_matrix, start):
+def moveMinimizer(vals, w, scale, c, job_length, dim, tau, dist_matrix, start, time_varying=False):
     remaining = 1.0
 
     # construct a solution which ramps up to 1 on the min dimension at each time step
@@ -454,7 +471,7 @@ def moveMinimizer(vals, w, scale, c, job_length, dim, tau, dist_matrix, start):
         sol.append(x_t)
         remaining = remaining - (c.T @ x_t)
 
-    cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, cpy=False)
+    cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, time_varying=time_varying, cpy=False)
     return sol, cost
 
 # "simple threshold" algorithm implementation
@@ -463,7 +480,7 @@ def moveMinimizer(vals, w, scale, c, job_length, dim, tau, dist_matrix, start):
 # dimension                 -- dim
 # L                         -- L
 # U                         -- U
-def threshold(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, start, dist_matrix):
+def threshold(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, start, dist_matrix, time_varying=False):
     threshold = np.sqrt(L*U)
 
     remaining = 1.0
@@ -509,5 +526,5 @@ def threshold(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, start, dist
         sol.append(x_t)
         remaining = remaining - (c.T @ x_t)
 
-    cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, cpy=False)
+    cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, time_varying=time_varying, cpy=False)
     return sol, cost

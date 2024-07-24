@@ -84,30 +84,36 @@ def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau
 #     return prob.value
 
 # new clipObjectiveSimplex -- no optimization
-def clipObjectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_state, cpy=True):
+def clipObjectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_state, time_varying=False, cpy=True):
     # get the optimal transport values using the OT library
-    cost = 0.0
+    hitCost = 0.0
+    switchCost = 0.0
     for (i, cost_func) in enumerate(vals):
-        cost += (cost_func @ vars[i])
+        hitCost += (cost_func @ vars[i])
     for i in range(len(vals)):
         if i == 0:
             # normalize the start state and vars[i]
             start_emd = np.array(start_state) / np.sum(start_state)
             varsi_emd = np.array(vars[i]) / np.sum(vars[i])
-            cost += ot.emd2(start_emd, varsi_emd, dist_matrix) * scale
+            if time_varying:
+                switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix[i]) * scale
+            else:
+                switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix) * scale
         else:
             # normalize vars
             varsi_emd = np.array(vars[i]) / np.sum(vars[i])
             varsi1_emd = np.array(vars[i-1]) / np.sum(vars[i-1])
             try:
-                cost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix) * scale
+                if time_varying:
+                    switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix[i]) * scale
+                else:
+                    switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix) * scale
             except:
                 print("Opt trans failed")
                 print(vars[i-1])
                 print(vars[i])
-    cost += (c.T @ vars[-1]) * tau
-    return cost
-
+    switchCost += (c.T @ vars[-1]) * tau
+    return hitCost + switchCost
 
 
 # objectiveFunctionDiscrete computes the minimization objective for CASLB 
@@ -159,7 +165,7 @@ def solve_gamma(alpha, U, L, D, tau):
 # dimension                 -- dim
 # L                         -- L
 # U                         -- U
-def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamma_ots, dist_matrix, epsilon, start):
+def Clipper(vals, w, scale, c, job_length, phi_list, dim, L, U, D, tau, adv, adv_gamma_ots, dist_matrix_list, epsilon, start, time_varying=False):
     sol = []
     gamma_ots = []
     accepted = 0.0
@@ -177,6 +183,12 @@ def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamm
 
     #simulate behavior of online algorithm using a for loop
     for (i, cost_func) in enumerate(vals):
+        phi = phi_list
+        dist_matrix = dist_matrix_list
+        if time_varying:
+            phi = phi_list[i]
+            dist_matrix = dist_matrix_list[i]
+
         a = adv[i]
         a_gamma_ot = adv_gamma_ots[i]
         adv_accepted += c.T @ a
@@ -249,7 +261,7 @@ def Clipper(vals, w, scale, c, job_length, phi, dim, L, U, D, tau, adv, adv_gamm
         sol.append(x_t)
         gamma_ots.append(gamma_ot)
 
-    cost = clipObjectiveSimplexNoOpt(sol, vals, dist_matrix, scale, dim, c, tau, start, cpy=True)
+    cost = clipObjectiveSimplexNoOpt(sol, vals, dist_matrix_list, scale, dim, c, tau, start, time_varying=time_varying, cpy=True)
     return sol, cost
 
 

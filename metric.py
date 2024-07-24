@@ -43,7 +43,7 @@ class MetricSpace:
         self.tau = tau
         self.df = pd.read_csv("latencies.csv", index_col=0)
         self.avg_distances, self.std_devs = self.get_distances(self.df)
-        self.simplex_names, _, _ = self.generate_simplex_distances()
+        self.simplex_names, self.c_simplex, self.simplex_distances = self.generate_simplex_distances()
 
         # get the tree embedding
         self.tree, self.weights, self.levels = self.frt_algorithm(self.names)
@@ -134,8 +134,62 @@ class MetricSpace:
                 else:
                     simplex_distances[simplex_names.index(from_region), simplex_names.index(to_region)] = self.tau
         return simplex_names, np.array(c_simplex), simplex_distances
-    
-    # generate a distance matrix between states in the probability simplex
+
+
+    # generate a new, random distance matrix between states in the probability simplex
+    def shuffled_distances(self, numshuffles=5):
+        names = self.names
+        new_simplex_distances = np.zeros((len(self.simplex_names), len(self.simplex_names)))
+        new_name_vector = self.name_vector.copy()
+        new_c_simplex = self.c_simplex.copy()
+        for i in range(numshuffles):
+            # pick a random region to swap
+            swap1 = random.choice(names)
+            swap2 = random.choice(names)
+            while swap1 == swap2:
+                swap2 = random.choice(names)
+            # swap the distances
+            swap1indexON = self.simplex_names.index(swap1 + " ON")
+            swap2indexON = self.simplex_names.index(swap2 + " ON")
+
+            for from_region in self.simplex_names:
+                from_name = from_region.split(" ")[0]
+                from_state = from_region.split(" ")[1]
+                from_index = self.simplex_names.index(from_region)
+                if from_name == swap1:
+                    from_index = self.simplex_names.index(swap2 + " " + from_state)
+                elif from_name == swap2:
+                    from_index = self.simplex_names.index(swap1 + " " + from_state)
+                for to_region in self.simplex_names:
+                    if from_region == to_region:
+                        continue
+                    to_name = to_region.split(" ")[0]
+                    to_state = to_region.split(" ")[1]
+                    to_index = self.simplex_names.index(to_region)
+                    if to_name == swap1:
+                        to_index = self.simplex_names.index(swap2 + " " + to_state)
+                    elif to_name == swap2:
+                        to_index = self.simplex_names.index(swap1 + " " + to_state)
+                    # if the states are different
+                    if from_name != to_name:
+                        new_simplex_distances[from_index, to_index] = self.distance(from_name, to_name)
+                    # if the names are the same
+                    else:
+                        new_simplex_distances[from_index, to_index] = self.tau
+
+            # swap the c values
+            new_c_simplex[swap1indexON] = self.c_simplex[swap2indexON]
+            new_c_simplex[swap2indexON] = self.c_simplex[swap1indexON]
+
+            # swap the vector names
+            for i, name in enumerate(new_name_vector):
+                new_name = name.replace(swap1, "INTERMEDIATE").replace(swap2, swap1).replace("INTERMEDIATE", swap2)
+                new_name_vector[i] = new_name
+        
+        new_phi = self.phi(names, new_name_vector, self.simplex_names)
+
+        return new_simplex_distances, new_c_simplex, new_phi
+
 
 
     # generates a random tree embedding of the metric space according to the FRT algorithm

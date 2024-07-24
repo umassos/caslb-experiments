@@ -5,9 +5,9 @@ import sys
 import random
 import math
 import itertools
+import traceback
 import numpy as np
 import pandas as pd
-import traceback
 import matplotlib.pyplot as plt
 from scipy.special import lambertw
 from multiprocessing import Pool
@@ -27,15 +27,28 @@ import matplotlib.style as style
 style.use('tableau-colorblind10')
 # style.use('seaborn-v0_8-paper')
 
-def experiment(tau_set):
+def experiment(num_region):
     import implementations as f
     import clipper as c
+
+    originalNames = [
+        "us-east-1",      # US East (N. Virginia)
+        "us-west-1",      # US West (N. California)
+        "us-west-2",      # US West (Oregon)
+        "af-south-1",     # Africa (Cape Town)
+        "ap-south-2",     # Asia Pacific (Hyderabad)
+        "ap-northeast-2", # Asia Pacific (Seoul)
+        "ap-southeast-2", # Asia Pacific (Sydney)
+        "ca-central-1",   # Canada (Central)
+        "eu-central-1",   # Europe (Frankfurt)
+        "eu-west-2",      # Europe (London)
+        "eu-west-3",      # Europe (Paris)
+        "eu-north-1",     # Europe (Stockholm)
+        "sa-east-1",       # South America (São Paulo)
+        "il-central-1"    # Israel (Tel Aviv)
+    ]
+
     #################################### set up experiment parameters
-
-    # get the parameters from the command line
-
-    # how many regions to choose
-    # regions = int(sys.argv[1])
 
     # gigabytes of data that need to be "transferred" (i.e. the diameter of the metric space)
     setGB = 4 # float(sys.argv[1])
@@ -44,45 +57,17 @@ def experiment(tau_set):
     eastToWest = 221.0427046263345 # milliseconds
     dist = eastToWest
     minutesPerGB = 1.72118 
-    carbonPerGB = (minutesPerGB / 60) * 700
+    carbonPerGB = (minutesPerGB / 60) * 700 #362
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
-    job_length = 4
+    job_length = 1
 
     # get tau from cmd args
-    tau = (tau_set/scale) * (1/job_length) #float(sys.argv[2]) / scale
-
-    # load in metric space
-    m = metric.MetricSpace(tau)
-    names = m.get_names()
-
-    # get the diameter
-    D = m.diameter() * scale
-
-    # get the distance matrix
-    simplex_names, c_simplex, simplex_distances = m.generate_simplex_distances()
-    dim = len(simplex_names)
-
-    # get the weight vector, the c vector, the name vector, and phi inverse
-    weights = m.get_weight_vector()
-    c_vector, name_vector = m.get_unit_c_vector()
-    phi_inverse = m.phi_inverse(names, name_vector, simplex_names)
-    phi = m.phi(names, name_vector, simplex_names)
-
-    # get the carbon trace
-    datetimes, carbon_vector = carbonTraces.get_numpy(m)
-
-    # get the simplex carbon trace
-    carbon_simplex = carbonTraces.get_simplex(simplex_names)
-
-
-    # scale the c_vector and c_simplex by the job length
-    c_vector = c_vector / job_length
-    c_simplex = c_simplex / job_length
+    tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
 
     # specify the number of instances to generate
-    epochs = 15
+    epochs = 1500
 
     opts = []
     pcms = []
@@ -92,7 +77,6 @@ def experiment(tau_set):
     constThresholds = []
     greedys = []
 
-
     cost_opts = []
     cost_pcms = []
     cost_clip0s = []
@@ -101,10 +85,39 @@ def experiment(tau_set):
     cost_constThresholds = []
     cost_greedys = []
 
-
     # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
     for _ in range(epochs):
+        # generate random metric
+        subset_names = random.sample(originalNames, num_region)
+        
+        # load in metric space
+        m = metric.MetricSpace(tau, names=subset_names)
+        names = subset_names
+
+        # get the diameter
+        D = m.diameter(subset_names) * scale
+
+        # get the distance matrix
+        simplex_names, c_simplex, simplex_distances = m.generate_simplex_distances()
+        dim = len(simplex_names)
+
+        # get the weight vector, the c vector, the name vector, and phi inverse
+        weights = m.get_weight_vector()
+        c_vector, name_vector = m.get_unit_c_vector()
+        phi_inverse = m.phi_inverse(names, name_vector, simplex_names)
+        phi = m.phi(names, name_vector, simplex_names)
+
+        # get the carbon trace
+        datetimes, carbon_vector = carbonTraces.get_numpy(m)
+
+        # get the simplex carbon trace
+        carbon_simplex = carbonTraces.get_simplex(simplex_names)
+
+        # scale the c_vector and c_simplex by the job length
+        c_vector = c_vector / job_length
+        c_simplex = c_simplex / job_length
+
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
@@ -125,7 +138,7 @@ def experiment(tau_set):
 
         if D > (Uc - Lc):
             print("D too large!")
-            exit(1)
+            continue
         
         # pick a random name out of the subset of names
         start_state = np.random.randint(0, len(names))
@@ -187,7 +200,7 @@ def experiment(tau_set):
             # print the details of the exception
             print(traceback.format_exception(*sys.exc_info()))
             continue
-
+        
         opts.append(sol)
         pcms.append(pcm)
         agnostics.append(agn)
@@ -204,6 +217,9 @@ def experiment(tau_set):
         cost_clip0s.append(clip0Cost)
         cost_clip2s.append(clip2Cost)
 
+    if len(opts) == 0:
+        print("D too large. Skipping.")
+        return
 
     # compute competitive ratios
     cost_opts = np.array(cost_opts)
@@ -228,13 +244,15 @@ def experiment(tau_set):
                "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("gb/gb_results{}.pickle".format(setGB), "wb") as f:
+    with open("random_subset/random_subset{}.pickle".format(num_region), "wb") as f:
         pickle.dump(results, f)
 
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
-    print("Simulated GB: {}".format(setGB))
+    print("Simulated Subset: {}".format(subset_names))
+    # if np.mean(crPCM) < np.mean(crGreedy):
+    #     #if np.percentile(crPCM, 95) < np.percentile(crGreedy, 95):
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
@@ -247,12 +265,8 @@ def experiment(tau_set):
 
 
 # use multiprocessing here
-if __name__ == "__main__":
-    taus = [0, 0.1, 1, 5, 10, 15, 25, 50, 75, 100]
-    with Pool(10) as p:
-        p.map(experiment, taus)
+if __name__ == "__main__":    
+    num_regions = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
 
-# if __name__ == "__main__":
-#     gbs = [1, 3, 5, 7, 9]
-#     for gb in tqdm(gbs):
-#         experiment(gb)
+    with Pool(10) as p:
+        p.map(experiment, num_regions)
