@@ -5,9 +5,9 @@ import sys
 import random
 import math
 import itertools
-import traceback
 import numpy as np
 import pandas as pd
+import traceback
 import matplotlib.pyplot as plt
 from scipy.special import lambertw
 from multiprocessing import Pool
@@ -27,13 +27,15 @@ import matplotlib.style as style
 style.use('tableau-colorblind10')
 # style.use('seaborn-v0_8-paper')
 
-def experiment(subset):
+def experiment(tau_set):
     import implementations as f
     import clipper as c
     #################################### set up experiment parameters
 
     # get the parameters from the command line
-    subset_names, subset_header = subset
+
+    # how many regions to choose
+    # regions = int(sys.argv[1])
 
     # gigabytes of data that need to be "transferred" (i.e. the diameter of the metric space)
     setGB = 4 # float(sys.argv[1])
@@ -42,21 +44,21 @@ def experiment(subset):
     eastToWest = 221.0427046263345 # milliseconds
     dist = eastToWest
     minutesPerGB = 1.72118 
-    carbonPerGB = (minutesPerGB / 60) * 700 #362
+    carbonPerGB = (minutesPerGB / 60) * 700
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
-    job_length = 1
+    job_length = 4
 
     # get tau from cmd args
-    tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
+    tau = (tau_set/scale) * (1/job_length) #float(sys.argv[2]) / scale
 
     # load in metric space
-    m = metric.MetricSpace(tau, names=subset_names)
-    names = subset_names
+    m = metric.MetricSpace(tau)
+    names = m.get_names()
 
     # get the diameter
-    D = m.diameter(subset_names) * scale
+    D = m.diameter() * scale
 
     # get the distance matrix
     simplex_names, c_simplex, simplex_distances = m.generate_simplex_distances()
@@ -90,6 +92,7 @@ def experiment(subset):
     constThresholds = []
     greedys = []
 
+
     cost_opts = []
     cost_pcms = []
     cost_clip0s = []
@@ -122,7 +125,7 @@ def experiment(subset):
 
         if D > (Uc - Lc):
             print("D too large!")
-            break
+            exit(1)
         
         # pick a random name out of the subset of names
         start_state = np.random.randint(0, len(names))
@@ -184,7 +187,7 @@ def experiment(subset):
             # print the details of the exception
             print(traceback.format_exception(*sys.exc_info()))
             continue
-        
+
         opts.append(sol)
         pcms.append(pcm)
         agnostics.append(agn)
@@ -201,9 +204,6 @@ def experiment(subset):
         cost_clip0s.append(clip0Cost)
         cost_clip2s.append(clip2Cost)
 
-    if len(opts) == 0:
-        print("D too large. Skipping.")
-        return
 
     # compute competitive ratios
     cost_opts = np.array(cost_opts)
@@ -228,15 +228,13 @@ def experiment(subset):
                "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("subset/subset_{}.pickle".format(subset_header), "wb") as f:
+    with open("gb/gb_results{}.pickle".format(setGB), "wb") as f:
         pickle.dump(results, f)
 
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
-    print("Simulated Subset: {}".format(subset_names))
-    # if np.mean(crPCM) < np.mean(crGreedy):
-    #     #if np.percentile(crPCM, 95) < np.percentile(crGreedy, 95):
+    print("Simulated GB: {}".format(setGB))
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
@@ -250,55 +248,11 @@ def experiment(subset):
 
 # use multiprocessing here
 if __name__ == "__main__":
-    originalNames = [
-        "us-east-1",      # US East (N. Virginia)
-        "us-west-1",      # US West (N. California)
-        "us-west-2",      # US West (Oregon)
-        "af-south-1",     # Africa (Cape Town)
-        "ap-south-2",     # Asia Pacific (Hyderabad)
-        "ap-northeast-2", # Asia Pacific (Seoul)
-        "ap-southeast-2", # Asia Pacific (Sydney)
-        "ca-central-1",   # Canada (Central)
-        "eu-central-1",   # Europe (Frankfurt)
-        "eu-west-2",      # Europe (London)
-        "eu-west-3",      # Europe (Paris)
-        "eu-north-1",     # Europe (Stockholm)
-        "sa-east-1",       # South America (São Paulo)
-        "il-central-1"    # Israel (Tel Aviv)
-    ]
-    GDPRsubset = [ "eu-central-1", "eu-west-2", "eu-west-3",  "eu-north-1" ]
-    NAsubset = ['us-east-1', 'us-west-1', 'us-west-2', 'ca-central-1']
-    # crossingsSubset = ["us-east-1", "us-west-2",  "af-south-1",  "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1" ]
-    # crossings2Subset = [ "us-east-1", "us-west-1", "us-west-2", "af-south-1", "ap-south-2", "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1"]
-    noHydroSubset = ["us-east-1", "us-west-1", "us-west-2",  "af-south-1", "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "eu-west-3", "sa-east-1", "il-central-1" ]
-    
-    candidateSubset = ['af-south-1', 'us-east-1', 'us-west-2', 'us-west-1', 'ap-northeast-2', 'eu-west-3'] # twice!
-    candidate2Subset = ['sa-east-1', 'eu-west-3', 'us-west-2', 'ap-south-2', 'ap-southeast-2'] # three times good margin
-    candidate3Subset = ['us-west-1', 'ap-northeast-2', 'eu-central-1', 'ap-south-2', 'il-central-1', 'eu-north-1', 'af-south-1'] # twice!
-    candidate4Subset = ['ca-central-1', 'ap-southeast-2', 'af-south-1', 'il-central-1', 'ap-south-2'] # twice!
-    candidate5Subset = ['ap-northeast-2', 'il-central-1', 'af-south-1', 'eu-west-3', 'us-west-2'] # twice, bad margin
-    candidate6Subset = ['us-east-1', 'ap-south-2', 'eu-north-1', 'us-west-2', 'us-west-1', 'af-south-1']
-    candidate7Subset = ['us-west-1', 'eu-central-1', 'ap-south-2', 'eu-west-3', 'eu-north-1', 'ap-southeast-2'] # twice!
-    candidate8Subset = ['ap-southeast-2', 'us-west-2', 'eu-central-1', 'ca-central-1', 'il-central-1', 'ap-northeast-2'] # twice!
-    candidate9Subset = ['eu-central-1', 'ap-northeast-2', 'eu-west-2', 'us-west-1', 'ca-central-1', 'ap-southeast-2', 'ap-south-2'] # three ok margin
-    candidate10Subset = ['us-west-1', 'eu-west-2', 'ap-south-2', 'ap-northeast-2', 'us-east-1', 'eu-north-1'] # twice good margin
-    candidate11Subset = ['ap-northeast-2', 'us-east-1', 'ap-southeast-2', 'ca-central-1', 'eu-west-3'] # three times good margin
-    candidate12Subset = ['il-central-1', 'us-west-1', 'sa-east-1', 'af-south-1', 'eu-west-2', 'eu-west-3', 'us-east-1'] # twice ok margin
-    candidate13Subset = ['eu-west-3', 'ca-central-1', 'us-east-1', 'il-central-1', 'ap-northeast-2', 'sa-east-1', 'ap-southeast-2']
-    candidate14Subset = ['eu-west-3', 'af-south-1', 'eu-central-1', 'il-central-1', 'ap-northeast-2', 'us-west-1'] # twice bad margin
-
-    candidates = [candidateSubset, candidate2Subset, candidate3Subset, candidate4Subset, candidate5Subset, candidate6Subset, candidate7Subset, candidate8Subset, candidate9Subset, candidate10Subset, candidate11Subset, candidate12Subset, candidate13Subset, candidate14Subset]
-    candidate_names = ["candidate1", "candidate2", "candidate3", "candidate4", "candidate5", "candidate6", "candidate7", "candidate8", "candidate9", "candidate10", "candidate11", "candidate12", "candidate13", "candidate14"]
-    
-    
-    subsets = [(GDPRsubset, "GDPR"), (NAsubset, "NA"), (noHydroSubset, "noHydro")]
-    # extend subsets with the candidate subsets
-    for i in range(len(candidates)):
-        subsets.append((candidates[i], candidate_names[i]))
-    # for i in range(5, 11):
-    #     # choose a number of regions (random number between 5 and 14)
-    #     numregions = random.randint(6, 10)
-    #     subsets.append((random.sample(originalNames, numregions), "random{}".format(i)))
-
+    taus = [0, 0.1, 1, 5, 10, 15, 25, 50, 75, 100]
     with Pool(10) as p:
-        p.map(experiment, subsets)
+        p.map(experiment, taus)
+
+# if __name__ == "__main__":
+#     gbs = [1, 3, 5, 7, 9]
+#     for gb in tqdm(gbs):
+#         experiment(gb)
