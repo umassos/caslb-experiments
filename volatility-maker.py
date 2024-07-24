@@ -137,7 +137,7 @@ def experiment(times):
         phi_list.extend([phi_list[-1]] * (T - len(phi_list)))
 
         # print simplex_distance_list
-        print(simplex_distance_list)
+        # print(simplex_distance_list)
 
         # get the carbon traces for the sequence
         vectorSequence = carbon_vector[index:index+T, :]
@@ -279,7 +279,7 @@ def experiment(times):
 # use multiprocessing here
 if __name__ == "__main__":
     times_list = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-    with Pool(1) as p:
+    with Pool(11) as p:
         p.map(experiment, times_list)
 
 # if __name__ == "__main__":
