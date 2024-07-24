@@ -253,6 +253,6 @@ if __name__ == "__main__":
         p.map(experiment, gbs)
 
 # if __name__ == "__main__":
-#     gbs = [1, 3, 5, 7, 9]
+#     gbs = [1]
 #     for gb in tqdm(gbs):
 #         experiment(gb)
