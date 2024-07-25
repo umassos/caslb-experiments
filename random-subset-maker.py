@@ -57,7 +57,7 @@ def experiment(num_region):
     eastToWest = 221.0427046263345 # milliseconds
     dist = eastToWest
     minutesPerGB = 1.72118 
-    carbonPerGB = (minutesPerGB / 60) * 700 #362
+    carbonPerGB = (minutesPerGB / 60) * 365
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
