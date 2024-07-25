@@ -91,7 +91,7 @@ def experiment(GB):
     agnostics = []
     constThresholds = []
     greedys = []
-
+    delayGreedys = []
 
     cost_opts = []
     cost_pcms = []
@@ -100,7 +100,7 @@ def experiment(GB):
     cost_agnostics = []
     cost_constThresholds = []
     cost_greedys = []
-
+    cost_delayGreedys = []
 
     # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
@@ -169,6 +169,8 @@ def experiment(GB):
 
             greed, greedCost = f.greedy(simplexSequence, weights, scale, c_simplex, job_length, dim, tau, simplex_distances, start_simplex)
 
+            delayGreed, delayGreedCost = f.delayedGreedy(simplexSequence, errordSequence, weights, scale, c_simplex, job_length, dim, tau, simplex_distances, start_simplex)
+
             #################################### get the online CLIP solution
             epsilon = 0.1
             clip0, clip0Cost = c.Clipper(simplexSequence, weights, scale, c_simplex, job_length, phi, dim, Lc, Uc, D, tau*scale, adv, adv_ots, simplex_distances, epsilon, start_simplex)
@@ -193,6 +195,7 @@ def experiment(GB):
         agnostics.append(agn)
         constThresholds.append(const)
         greedys.append(greed)
+        delayGreedys.append(delayGreed)
         clip0s.append(clip0)
         clip2s.append(clip2)
 
@@ -201,6 +204,7 @@ def experiment(GB):
         cost_agnostics.append(agnCost)
         cost_constThresholds.append(constCost)
         cost_greedys.append(greedCost)
+        cost_delayGreedys.append(delayGreedCost)
         cost_clip0s.append(clip0Cost)
         cost_clip2s.append(clip2Cost)
 
@@ -211,6 +215,7 @@ def experiment(GB):
     cost_agnostics = np.array(cost_agnostics)
     cost_constThresholds = np.array(cost_constThresholds)
     cost_greedys = np.array(cost_greedys)
+    cost_delayGreedys = np.array(cost_delayGreedys)
     cost_clip0s = np.array(cost_clip0s)
     cost_clip2s = np.array(cost_clip2s)
     # cost_baseline2s = np.array(cost_baseline2s)
@@ -219,13 +224,14 @@ def experiment(GB):
     crAgnostic = cost_agnostics/cost_opts
     crConstThreshold = cost_constThresholds/cost_opts
     crGreedy = cost_greedys/cost_opts
+    crDelayGreedy = cost_delayGreedys/cost_opts
     crClip0 = cost_clip0s/cost_opts
     crClip2 = cost_clip2s/cost_opts
     # crBaseline2 = cost_baseline2s/cost_opts
 
     # save the results (use a dictionary)
-    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "clip0s": clip0s, "clip2s": clip2s, 
-               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
+    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "delayGreedys": delayGreedys, "clip0s": clip0s, "clip2s": clip2s,
+               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_delayGreedys": cost_delayGreedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
     with open("gb/gb_results{}.pickle".format(setGB), "wb") as f:
@@ -239,6 +245,7 @@ def experiment(GB):
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
     print("greedy: ", np.mean(crGreedy), np.percentile(crGreedy, 95))
+    print("delayed greedy: ", np.mean(crDelayGreedy), np.percentile(crDelayGreedy, 95))
     print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
     print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))

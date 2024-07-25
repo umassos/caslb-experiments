@@ -438,16 +438,29 @@ def agnostic(vals, w, scale, c, job_length, dim, tau, dist_matrix, start, time_v
     cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, time_varying=time_varying, cpy=False)
     return sol, cost
 
-# "move to minimizer" algorithm implementation
+# "delayedGreedy" algorithm implementation
 # list of costs (values)    -- vals
 # switching cost weight     -- w
 # dimension                 -- dim
-def moveMinimizer(vals, w, scale, c, job_length, dim, tau, dist_matrix, start, time_varying=False):
+def delayedGreedy(vals, adv_vals, w, scale, c, job_length, dim, tau, dist_matrix, start, time_varying=False):
+    # choose the minimum dimension across
+    start_time = 0
+    min_dim = 0
+    best_val_so_far = np.inf
+    for i in range(len(vals)):
+        min_dim_cur = np.argmin(adv_vals[i][np.nonzero(adv_vals[i])]) * 2
+        value_cur = adv_vals[i][min_dim_cur]
+        if value_cur < best_val_so_far:
+            best_val_so_far = value_cur
+            min_dim = min_dim_cur
+            start_time = i
+    if start_time > len(vals) - job_length:
+        start_time = len(vals) - job_length
     remaining = 1.0
 
-    # construct a solution which ramps up to 1 on the min dimension at each time step
+    # construct a solution which ramps up to 1 on the selected dimension, starting at the start_time step
     sol = []
-    for i, val in enumerate(vals):
+    for i, _ in enumerate(vals):
         prev = start
         if i != 0:
             prev = sol[i-1]
@@ -464,13 +477,15 @@ def moveMinimizer(vals, w, scale, c, job_length, dim, tau, dist_matrix, start, t
             else:
                 sol.append(sol[-1])
             continue
-        # choose a the minimum dimension at current time and ramp up there
-        min_dim = np.argmin(val[np.nonzero(val)]) * 2
-        x_t = np.zeros(dim)
-        x_t[min_dim] = 1.0
-        sol.append(x_t)
-        remaining = remaining - (c.T @ x_t)
-
+        if i >= start_time:
+            x_t = np.zeros(dim)
+            x_t[min_dim] = 1.0
+            sol.append(x_t)
+            remaining = remaining - (c.T @ x_t)
+        else:
+            x_t = start
+            sol.append(x_t)
+    
     cost = objectiveSimplexNoOpt(np.array(sol), vals, dist_matrix, scale, dim, c, tau, start, time_varying=time_varying, cpy=False)
     return sol, cost
 
