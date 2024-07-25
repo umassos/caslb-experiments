@@ -104,9 +104,9 @@ def objectiveFunctionSimplex(vars, gammas, vals, dist_matrix, scale, dim, c, tau
     else:
         for i, gamma in enumerate(gammas):
             if cpy:
-                cost += cp.trace(gamma.T*dist_matrix[i]) * scale
+                cost += cp.trace(gamma.T*dist_matrix[i]) * scale[i]
             else:
-                cost += np.trace(gamma.T*dist_matrix[i]) * scale
+                cost += np.trace(gamma.T*dist_matrix[i]) * scale[i]
     return cost
 
 # new clipObjectiveSimplex -- no optimization
@@ -122,7 +122,7 @@ def objectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_sta
             start_emd = np.array(start_state) / np.sum(start_state)
             varsi_emd = np.array(vars[i]) / np.sum(vars[i])
             if time_varying:
-                switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix[i]) * scale
+                switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix[i]) * scale[i]
             else:
                 switchCost += ot.emd2(start_emd, varsi_emd, dist_matrix) * scale
         else:
@@ -131,7 +131,7 @@ def objectiveSimplexNoOpt(vars, vals, dist_matrix, scale, dim, c, tau, start_sta
             varsi1_emd = np.array(vars[i-1]) / np.sum(vars[i-1])
             try:
                 if time_varying:
-                    switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix[i]) * scale
+                    switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix[i]) * scale[i]
                 else:
                     switchCost += ot.emd2(varsi1_emd, varsi_emd, dist_matrix) * scale
             except:
@@ -268,18 +268,20 @@ def singleObjective(x, cost_func, previous, phi, w, scale, start, cpy=True):
 # U                         -- U
 # D                         -- diameter of the metric
 # @jit
-def PCM(vals, w, scale, c, job_length, phi_list, dim, L, U, D, tau, start, time_varying=False):
+def PCM(vals, w, scale_list, c, job_length, phi_list, dim, L, U, D, tau, start, time_varying=False):
     sol = []
     accepted = 0.0
 
     # get value for eta
-    eta = 1 / ( (U-D)/U + lambertw( ( (D+L-U+(2*tau*scale)) * math.exp((D-U)/U) )/U ) )
+    eta = 1 / ( (U-D)/U + lambertw( ( (D+L-U+(2*tau)) * math.exp((D-U)/U) )/U ) )
 
     #simulate behavior of online algorithm using a for loop
     for (i, cost_func) in enumerate(vals):
         phi = phi_list
+        scale = scale_list
         if time_varying:
             phi = phi_list[i]
+            scale = scale_list[i]
 
         if accepted >= 1:
             # check the previous solution

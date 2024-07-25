@@ -165,7 +165,7 @@ def solve_gamma(alpha, U, L, D, tau):
 # dimension                 -- dim
 # L                         -- L
 # U                         -- U
-def Clipper(vals, w, scale, c, job_length, phi_list, dim, L, U, D, tau, adv, adv_gamma_ots, dist_matrix_list, epsilon, start, time_varying=False):
+def Clipper(vals, w, scale_list, c, job_length, phi_list, dim, L, U, D, tau, adv, adv_gamma_ots, dist_matrix_list, epsilon, start, time_varying=False):
     sol = []
     gamma_ots = []
     accepted = 0.0
@@ -185,9 +185,11 @@ def Clipper(vals, w, scale, c, job_length, phi_list, dim, L, U, D, tau, adv, adv
     for (i, cost_func) in enumerate(vals):
         phi = phi_list
         dist_matrix = dist_matrix_list
+        scale = scale_list
         if time_varying:
             phi = phi_list[i]
             dist_matrix = dist_matrix_list[i]
+            scale = scale_list[i]
 
         a = adv[i]
         a_gamma_ot = adv_gamma_ots[i]
