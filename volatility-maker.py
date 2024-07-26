@@ -270,7 +270,7 @@ def experiment(times):
                "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_delayGreedys": cost_delayGreedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("volatility/volatility_results{}.pickle".format(setGB), "wb") as f:
+    with open("volatility/volatility_results{}.pickle".format(times), "wb") as f:
         pickle.dump(results, f)
 
 
