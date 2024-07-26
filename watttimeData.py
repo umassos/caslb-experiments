@@ -37,6 +37,9 @@ def downloadData(tuple):
 
     # filter data to only consider 2022 data
     df = df[df['datetime'] >= pd.Timestamp("2022-01-01", tz='UTC')]
+
+    # just take the first 10 rows for testing
+    # df = df.head(10)
     
     # get the list of timestamps in the underlying data
     timestamps = df['datetime']
@@ -52,20 +55,39 @@ def downloadData(tuple):
         #     model = "2022-10-01"
 
         # get the data from WattTime
-        hist_hour = wt_historical.get_historical_pandas(
-            start = start_time,
-            end = end_time,
-            region = region,
-            signal_type = 'co2_moer',
-            # model = model,
-        )
-        hist_forecasts_hour = wt_forecast.get_historical_forecast_pandas(
-            start = start_time,
-            end = end_time,
-            region = region,
-            signal_type = 'co2_moer',
-            model = model,
-        )
+        try:
+            hist_hour = wt_historical.get_historical_pandas(
+                start = start_time,
+                end = end_time,
+                region = region,
+                signal_type = 'co2_moer',
+                # model = model,
+            )
+            hist_forecasts_hour = wt_forecast.get_historical_forecast_pandas(
+                start = start_time,
+                end = end_time,
+                region = region,
+                signal_type = 'co2_moer',
+                model = model,
+            )
+        except:
+            # if it fails, wait a minute
+            time.sleep(60)
+            # try again
+            hist_hour = wt_historical.get_historical_pandas(
+                start = start_time,
+                end = end_time,
+                region = region,
+                signal_type = 'co2_moer',
+                # model = model,
+            )
+            hist_forecasts_hour = wt_forecast.get_historical_forecast_pandas(
+                start = start_time,
+                end = end_time,
+                region = region,
+                signal_type = 'co2_moer',
+                model = model,
+            )
         avg_marginal = hist_hour['value'].mean()
         avg_forecast = hist_forecasts_hour['value'].mean()
         hist_marginal.append(avg_marginal)
@@ -78,5 +100,5 @@ def downloadData(tuple):
 
 if __name__ == "__main__":
     # use multiprocessing to download data in parallel
-    with Pool(8) as p:
+    with Pool(5) as p:
         p.map(downloadData, carbon_data)
