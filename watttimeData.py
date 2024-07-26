@@ -94,10 +94,16 @@ def downloadData(tuple):
                 hist_marginal.append(hist_marginal[-1])
                 hist_marginal_forecast.append(hist_marginal_forecast[-1])
                 continue
-        avg_marginal = hist_hour['value'].mean()
-        avg_forecast = hist_forecasts_hour['value'].mean()
-        hist_marginal.append(avg_marginal)
-        hist_marginal_forecast.append(avg_forecast)
+        try:
+            avg_marginal = hist_hour['value'].mean()
+            avg_forecast = hist_forecasts_hour['value'].mean()
+            hist_marginal.append(avg_marginal)
+            hist_marginal_forecast.append(avg_forecast)
+        except:
+            print("failed to get data for", time, " and ", region)
+            hist_marginal.append(hist_marginal[-1])
+            hist_marginal_forecast.append(hist_marginal_forecast[-1])
+            continue
     df['marginal_carbon_avg'] = hist_marginal
     df['marginal_forecast_avg'] = hist_marginal_forecast
     df.to_csv(f"marginal-data/{csv_name}.csv", index=False)
@@ -105,6 +111,6 @@ def downloadData(tuple):
 
 if __name__ == "__main__":
     # use multiprocessing to download data in parallel
-    
+
     with Pool(10) as p:
         p.map(downloadData, carbon_data)
