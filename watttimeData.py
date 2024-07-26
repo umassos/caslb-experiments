@@ -71,23 +71,29 @@ def downloadData(tuple):
                 model = model,
             )
         except:
-            # if it fails, wait a minute
+            # if it fails, wait a minute, try again.
             time.sleep(60)
             # try again
-            hist_hour = wt_historical.get_historical_pandas(
-                start = start_time,
-                end = end_time,
-                region = region,
-                signal_type = 'co2_moer',
-                # model = model,
-            )
-            hist_forecasts_hour = wt_forecast.get_historical_forecast_pandas(
-                start = start_time,
-                end = end_time,
-                region = region,
-                signal_type = 'co2_moer',
-                model = model,
-            )
+            try:
+                hist_hour = wt_historical.get_historical_pandas(
+                    start = start_time,
+                    end = end_time,
+                    region = region,
+                    signal_type = 'co2_moer',
+                    # model = model,
+                )
+                hist_forecasts_hour = wt_forecast.get_historical_forecast_pandas(
+                    start = start_time,
+                    end = end_time,
+                    region = region,
+                    signal_type = 'co2_moer',
+                    model = model,
+                )
+            except:
+                print("failed to get data for", time, " and ", region)
+                hist_marginal.append(hist_marginal[-1])
+                hist_marginal_forecast.append(hist_marginal_forecast[-1])
+                continue
         avg_marginal = hist_hour['value'].mean()
         avg_forecast = hist_forecasts_hour['value'].mean()
         hist_marginal.append(avg_marginal)
@@ -96,7 +102,6 @@ def downloadData(tuple):
     df['marginal_forecast_avg'] = hist_marginal_forecast
     df.to_csv(f"marginal-data/{csv_name}.csv", index=False)
     print(f"Processed {csv_name}")
-
 
 if __name__ == "__main__":
     # use multiprocessing to download data in parallel
