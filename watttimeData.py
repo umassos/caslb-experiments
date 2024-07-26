@@ -105,5 +105,6 @@ def downloadData(tuple):
 
 if __name__ == "__main__":
     # use multiprocessing to download data in parallel
-    with Pool(5) as p:
+    
+    with Pool(10) as p:
         p.map(downloadData, carbon_data)
