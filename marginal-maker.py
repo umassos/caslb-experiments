@@ -265,7 +265,6 @@ def experiment(job_length):
     with open("marginal/marginal_results{}.pickle".format(job_length), "wb") as f:
         pickle.dump(results, f)
 
-
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
     print("Job Length: {}".format(job_length))
