@@ -50,9 +50,9 @@ for name in marginal_names:
     df = pd.read_csv(f"marginal-data/{name}.csv", parse_dates=["datetime"])
     # keep only the columns we need
     df = df[["datetime", "marginal_carbon_avg", "marginal_forecast_avg"]]
-    # anything below 12 is a data error, truncate it to 12
-    df["marginal_carbon_avg"] = np.maximum(df["marginal_carbon_avg"], 12)
-    df["marginal_forecast_avg"] = np.maximum(df["marginal_forecast_avg"], 12)
+    # anything below 48 is a data error, truncate it to 48
+    df["marginal_carbon_avg"] = np.maximum(df["marginal_carbon_avg"], 48)
+    df["marginal_forecast_avg"] = np.maximum(df["marginal_forecast_avg"], 48)
     mar_dfs[name] = df
 
 # given a vector of names from the metric, return a numpy matrix and datetime index for the carbon traces

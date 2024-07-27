@@ -94,7 +94,7 @@ def experiment(job_length):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 100
 
     opts = []
     advs = []
@@ -119,11 +119,11 @@ def experiment(job_length):
 
     # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
-    for _ in range(epochs):
+    for _ in tqdm(range(epochs)):
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
-        T = np.random.randint(max(12, job_length*2), 48)
+        T = max(12, job_length * 2)
 
         # randomly choose an index from datetimes, and make sure there are at least T days including/after that index
         index = np.random.randint(0, len(datetimes) - T)
@@ -198,15 +198,15 @@ def experiment(job_length):
             # epsilon = 10
             # clip10, clip10Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
 
-            if clip2Cost < solCost:
-                print("Clipper2 better than optimal?")
-                print("clip2:", clip2)
-                print("sol:", sol)
-                print("clip2Cost:", clip2Cost)
-                print("solCost:", solCost)
-                print("clip2 capacity:", (clip2 @ c_simplex.T))
-                print("sol capacity:", (sol @ c_simplex.T))
-                print("")
+            # if advCost > 20 * solCost:
+            #     print("ADV much worse than optimal")
+            #     # print("clip0Cost:", clip0Cost, (simplexSequence * clip0))
+            #     print("advCost:", advCost, (simplexSequence * adv))
+            #     print("solCost:", solCost, (simplexSequence * sol))
+            #     # print("clip0 capacity:", (clip0 @ c_simplex.T))
+            #     print("adv capacity:", (adv @ c_simplex.T))
+            #     print("sol capacity:", (sol @ c_simplex.T))
+            #     print("")
 
         except Exception as e:
             # if anything goes wrong, it's probably a numerical error, but skip this instance and move on.
@@ -268,7 +268,7 @@ def experiment(job_length):
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
-    print("Simulated Job Length: {}".format(job_length))
+    print("Job Length: {}".format(job_length))
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
@@ -289,6 +289,7 @@ def experiment(job_length):
 #         p.map(experiment, lengths)
 
 if __name__ == "__main__":
-    lengths = [1, 3, 5, 7, 9]
-    for length in tqdm(lengths):
+    # experiment(12)
+    job_lengths = [2, 4, 6, 8]
+    for length in tqdm(job_lengths):
         experiment(length)
