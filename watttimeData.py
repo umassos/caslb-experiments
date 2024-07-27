@@ -5,6 +5,7 @@ os.environ['WATTTIME_PASSWORD'] = 'vikner-bozda4-fesrEb'
 
 import pandas as pd
 from tqdm import tqdm
+import time as t
 from multiprocessing import Pool
 
 from watttime import WattTimeMyAccess
@@ -72,7 +73,7 @@ def downloadData(tuple):
             )
         except:
             # if it fails, wait a minute, try again.
-            time.sleep(60)
+            t.sleep(60)
             # try again
             try:
                 hist_hour = wt_historical.get_historical_pandas(
