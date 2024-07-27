@@ -27,6 +27,18 @@ import matplotlib.style as style
 style.use('tableau-colorblind10')
 # style.use('seaborn-v0_8-paper')
 
+marginal_names = [
+    "us-east-1",      # US East (N. Virginia)
+    "us-west-1",      # US West (N. California)
+    "us-west-2",      # US West (Oregon)
+    "ap-southeast-2", # Asia Pacific (Sydney)
+    "ca-central-1",   # Canada (Central)
+    "eu-central-1",   # Europe (Frankfurt)
+    "eu-west-2",      # Europe (London)
+    "eu-west-3",      # Europe (Paris)
+    "eu-north-1",     # Europe (Stockholm)
+]
+
 def experiment(job_length):
     import implementations as f
     import clipper as c
@@ -44,7 +56,7 @@ def experiment(job_length):
     eastToWest = 221.0427046263345 # milliseconds
     dist = eastToWest
     minutesPerGB = 1.72118 
-    carbonPerGB = (minutesPerGB / 60) * 365
+    carbonPerGB = (minutesPerGB / 60) * 1250
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
@@ -54,7 +66,7 @@ def experiment(job_length):
     tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
 
     # load in metric space
-    m = metric.MetricSpace(tau)
+    m = metric.MetricSpace(tau, names=marginal_names)
     names = m.get_names()
 
     # get the diameter
@@ -71,11 +83,11 @@ def experiment(job_length):
     phi = m.phi(names, name_vector, simplex_names)
 
     # get the carbon trace
-    datetimes, carbon_vector = carbonTraces.get_numpy(m)
+    datetimes, carbon_vector = carbonTraces.get_numpy(m, marginal=True)
 
     # get the simplex carbon trace
-    carbon_simplex = carbonTraces.get_simplex(simplex_names)
-
+    carbon_simplex = carbonTraces.get_simplex(simplex_names, marginal=True)
+    forecast_simplex = carbonTraces.get_simplex(simplex_names, forecast=True)
 
     # scale the c_vector and c_simplex by the job length
     c_vector = c_vector / job_length
@@ -85,6 +97,7 @@ def experiment(job_length):
     epochs = 1500
 
     opts = []
+    advs = []
     pcms = []
     clip0s = []
     clip2s = []
@@ -94,6 +107,7 @@ def experiment(job_length):
     delayGreedys = []
 
     cost_opts = []
+    cost_advs = []
     cost_pcms = []
     cost_clip0s = []
     cost_clip2s = []
@@ -118,6 +132,7 @@ def experiment(job_length):
         # get the carbon traces for the sequence
         vectorSequence = carbon_vector[index:index+T, :]
         simplexSequence = carbon_simplex[index:index+T, :]
+        errordSequence = forecast_simplex[index:index+T, :]
 
         # compute L and U based on cost functions
         costs = simplexSequence.flatten()
@@ -144,9 +159,7 @@ def experiment(job_length):
             # print(np.sum(x_opt))
 
             # #################################### get the "bad" solution
-            # solve for the advice using perturbed sequence
-            errordSequence = simplexSequence + np.random.uniform(-0.5, 0.5, simplexSequence.shape)*simplexSequence
-            # print(simplexSequence)
+            # solve for the advice using forecast
             # print(errordSequence) (simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state):
             adv, adv_gamma_ots, advCost = f.optimalSolution(errordSequence, simplex_distances, tau*scale, scale, c_simplex, dim, start_simplex, alt_cost_functions=simplexSequence)
             adv_ots = [gamma.value for gamma in adv_gamma_ots]
@@ -185,6 +198,16 @@ def experiment(job_length):
             # epsilon = 10
             # clip10, clip10Cost = c.CLIP(cost_functions, weights, d, Lc, Uc, adv, epsilon)
 
+            if clip2Cost < solCost:
+                print("Clipper2 better than optimal?")
+                print("clip2:", clip2)
+                print("sol:", sol)
+                print("clip2Cost:", clip2Cost)
+                print("solCost:", solCost)
+                print("clip2 capacity:", (clip2 @ c_simplex.T))
+                print("sol capacity:", (sol @ c_simplex.T))
+                print("")
+
         except Exception as e:
             # if anything goes wrong, it's probably a numerical error, but skip this instance and move on.
             # print the details of the exception
@@ -192,6 +215,7 @@ def experiment(job_length):
             continue
         
         opts.append(sol)
+        advs.append(adv)
         pcms.append(pcm)
         agnostics.append(agn)
         constThresholds.append(const)
@@ -201,6 +225,7 @@ def experiment(job_length):
         clip2s.append(clip2)
 
         cost_opts.append(solCost)
+        cost_advs.append(advCost)
         cost_pcms.append(pcmCost)
         cost_agnostics.append(agnCost)
         cost_constThresholds.append(constCost)
@@ -212,6 +237,7 @@ def experiment(job_length):
 
     # compute competitive ratios
     cost_opts = np.array(cost_opts)
+    cost_advs = np.array(cost_advs)
     cost_pcms = np.array(cost_pcms)
     cost_agnostics = np.array(cost_agnostics)
     cost_constThresholds = np.array(cost_constThresholds)
@@ -221,6 +247,7 @@ def experiment(job_length):
     cost_clip2s = np.array(cost_clip2s)
     # cost_baseline2s = np.array(cost_baseline2s)
 
+    crAdv = cost_advs/cost_opts
     crPCM = cost_pcms/cost_opts
     crAgnostic = cost_agnostics/cost_opts
     crConstThreshold = cost_constThresholds/cost_opts
@@ -231,11 +258,11 @@ def experiment(job_length):
     # crBaseline2 = cost_baseline2s/cost_opts
 
     # save the results (use a dictionary)
-    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "delayGreedys": delayGreedys, "clip0s": clip0s, "clip2s": clip2s,
-               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_delayGreedys": cost_delayGreedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
+    results = {"opts": opts, "advs": advs, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "delayGreedys": delayGreedys, "clip0s": clip0s, "clip2s": clip2s,
+               "cost_opts": cost_opts, "cost_advs": cost_advs, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_delayGreedys": cost_delayGreedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("length/length_results{}.pickle".format(job_length), "wb") as f:
+    with open("marginal/marginal_results{}.pickle".format(job_length), "wb") as f:
         pickle.dump(results, f)
 
 
@@ -249,18 +276,19 @@ def experiment(job_length):
     print("delayed greedy: ", np.mean(crDelayGreedy), np.percentile(crDelayGreedy, 95))
     print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
     print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
+    print("advice:", np.mean(crAdv), np.percentile(crAdv, 95))
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)
 
 
 
 # use multiprocessing here
-if __name__ == "__main__":
-    lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    with Pool(10) as p:
-        p.map(experiment, lengths)
-
 # if __name__ == "__main__":
-#     gbs = [1, 3, 5, 7, 9]
-#     for gb in tqdm(gbs):
-#         experiment(gb)
+#     lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+#     with Pool(10) as p:
+#         p.map(experiment, lengths)
+
+if __name__ == "__main__":
+    lengths = [1, 3, 5, 7, 9]
+    for length in tqdm(lengths):
+        experiment(length)

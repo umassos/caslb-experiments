@@ -27,7 +27,7 @@ import matplotlib.style as style
 style.use('tableau-colorblind10')
 # style.use('seaborn-v0_8-paper')
 
-def experiment(job_length):
+def experiment(energy_factor):
     import implementations as f
     import clipper as c
     #################################### set up experiment parameters
@@ -44,11 +44,11 @@ def experiment(job_length):
     eastToWest = 221.0427046263345 # milliseconds
     dist = eastToWest
     minutesPerGB = 1.72118 
-    carbonPerGB = (minutesPerGB / 60) * 365
-    scale = setGB * (carbonPerGB / eastToWest)
+    carbonPerGB = (minutesPerGB / 60) * 700
+    scale = setGB * (carbonPerGB / eastToWest) * energy_factor
 
     # job length (in hours)
-    job_length = job_length
+    job_length = 4
 
     # get tau from cmd args
     tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
@@ -76,7 +76,6 @@ def experiment(job_length):
     # get the simplex carbon trace
     carbon_simplex = carbonTraces.get_simplex(simplex_names)
 
-
     # scale the c_vector and c_simplex by the job length
     c_vector = c_vector / job_length
     c_simplex = c_simplex / job_length
@@ -85,6 +84,7 @@ def experiment(job_length):
     epochs = 1500
 
     opts = []
+    advs = []
     pcms = []
     clip0s = []
     clip2s = []
@@ -94,6 +94,7 @@ def experiment(job_length):
     delayGreedys = []
 
     cost_opts = []
+    cost_advs = []
     cost_pcms = []
     cost_clip0s = []
     cost_clip2s = []
@@ -109,7 +110,7 @@ def experiment(job_length):
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
-        T = np.random.randint(max(12, job_length*2), 48)
+        T = np.random.randint(12, 48)
 
         # randomly choose an index from datetimes, and make sure there are at least T days including/after that index
         index = np.random.randint(0, len(datetimes) - T)
@@ -192,6 +193,7 @@ def experiment(job_length):
             continue
         
         opts.append(sol)
+        advs.append(adv)
         pcms.append(pcm)
         agnostics.append(agn)
         constThresholds.append(const)
@@ -201,6 +203,7 @@ def experiment(job_length):
         clip2s.append(clip2)
 
         cost_opts.append(solCost)
+        cost_advs.append(advCost)
         cost_pcms.append(pcmCost)
         cost_agnostics.append(agnCost)
         cost_constThresholds.append(constCost)
@@ -212,6 +215,7 @@ def experiment(job_length):
 
     # compute competitive ratios
     cost_opts = np.array(cost_opts)
+    cost_advs = np.array(cost_advs)
     cost_pcms = np.array(cost_pcms)
     cost_agnostics = np.array(cost_agnostics)
     cost_constThresholds = np.array(cost_constThresholds)
@@ -221,6 +225,7 @@ def experiment(job_length):
     cost_clip2s = np.array(cost_clip2s)
     # cost_baseline2s = np.array(cost_baseline2s)
 
+    crAdv = cost_advs/cost_opts
     crPCM = cost_pcms/cost_opts
     crAgnostic = cost_agnostics/cost_opts
     crConstThreshold = cost_constThresholds/cost_opts
@@ -231,17 +236,17 @@ def experiment(job_length):
     # crBaseline2 = cost_baseline2s/cost_opts
 
     # save the results (use a dictionary)
-    results = {"opts": opts, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "delayGreedys": delayGreedys, "clip0s": clip0s, "clip2s": clip2s,
-               "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_delayGreedys": cost_delayGreedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
+    results = {"opts": opts, "advs": advs, "pcms": pcms, "agnostics": agnostics, "constThresholds": constThresholds, "greedys": greedys, "delayGreedys": delayGreedys, "clip0s": clip0s, "clip2s": clip2s,
+               "cost_opts": cost_opts, "cost_advs": cost_advs, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_delayGreedys": cost_delayGreedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("length/length_results{}.pickle".format(job_length), "wb") as f:
+    with open("energy/energy_results{}.pickle".format(int(energy_factor*100)), "wb") as f:
         pickle.dump(results, f)
 
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
-    print("Simulated Job Length: {}".format(job_length))
+    print("Simulated Energy Factor: {}".format(energy_factor))
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
@@ -249,18 +254,19 @@ def experiment(job_length):
     print("delayed greedy: ", np.mean(crDelayGreedy), np.percentile(crDelayGreedy, 95))
     print("clip0: ", np.mean(crClip0), np.percentile(crClip0, 95))
     print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
+    print("advice:", np.mean(crAdv), np.percentile(crAdv, 95))
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)
 
 
 
 # use multiprocessing here
-if __name__ == "__main__":
-    lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    with Pool(10) as p:
-        p.map(experiment, lengths)
-
 # if __name__ == "__main__":
-#     gbs = [1, 3, 5, 7, 9]
-#     for gb in tqdm(gbs):
-#         experiment(gb)
+#     lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+#     with Pool(10) as p:
+#         p.map(experiment, lengths)
+
+if __name__ == "__main__":
+    energy_factors = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    for factor in tqdm(energy_factors):
+        experiment(factor)

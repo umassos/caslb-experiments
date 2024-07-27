@@ -215,7 +215,7 @@ def Clipper(vals, w, scale_list, c, job_length, phi_list, dim, L, U, D, tau, adv
             continue
         
         remainder = (1 - accepted)
-        remaining_length = job_length - (remainder * job_length)
+        remaining_length = remainder * job_length
         # if remaining length is 2.5, need to compulsory trade on last three steps
 
         if i >= len(vals) - np.ceil(remaining_length) and remainder > 0: # must accept last cost functions

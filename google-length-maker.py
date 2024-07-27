@@ -18,6 +18,7 @@ from tqdm import tqdm
 import warnings
 import metric
 import carbonTraces
+import loadTraces
 
 warnings.filterwarnings("ignore")
 
@@ -27,7 +28,7 @@ import matplotlib.style as style
 style.use('tableau-colorblind10')
 # style.use('seaborn-v0_8-paper')
 
-def experiment(job_length):
+def experiment():
     import implementations as f
     import clipper as c
     #################################### set up experiment parameters
@@ -48,7 +49,7 @@ def experiment(job_length):
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
-    job_length = job_length
+    job_length = 4
 
     # get tau from cmd args
     tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
@@ -76,13 +77,12 @@ def experiment(job_length):
     # get the simplex carbon trace
     carbon_simplex = carbonTraces.get_simplex(simplex_names)
 
-
     # scale the c_vector and c_simplex by the job length
     c_vector = c_vector / job_length
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 4500
 
     opts = []
     pcms = []
@@ -105,7 +105,23 @@ def experiment(job_length):
 
     # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
-    for _ in range(epochs):
+    for _ in tqdm(range(epochs)):
+        #### get a random job length from the cloud traces
+        job_length = loadTraces.randomJobLength(1, 10)
+
+        # get tau from cmd args
+        tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
+
+        # get the distance matrix
+        simplex_names, c_simplex, simplex_distances = m.generate_simplex_distances()
+
+        # get the weight vector, the c vector, the name vector, and phi inverse
+        c_vector, name_vector = m.get_unit_c_vector()
+
+        # scale the c_vector and c_simplex by the job length
+        c_vector = c_vector / job_length
+        c_simplex = c_simplex / job_length
+
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
@@ -241,7 +257,6 @@ def experiment(job_length):
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
-    print("Simulated Job Length: {}".format(job_length))
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
@@ -254,13 +269,11 @@ def experiment(job_length):
 
 
 
-# use multiprocessing here
-if __name__ == "__main__":
-    lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    with Pool(10) as p:
-        p.map(experiment, lengths)
-
+# # use multiprocessing here
 # if __name__ == "__main__":
-#     gbs = [1, 3, 5, 7, 9]
-#     for gb in tqdm(gbs):
-#         experiment(gb)
+#     lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+#     with Pool(10) as p:
+#         p.map(experiment, lengths)
+
+if __name__ == "__main__":
+    experiment()

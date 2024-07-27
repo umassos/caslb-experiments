@@ -104,7 +104,9 @@ class MetricSpace:
         return point_set
     
     # given distance and set of points, compute the diameter
-    def diameter(self, points=names):
+    def diameter(self, points=None):
+        if points is None:
+            points = self.names
         return max(self.distance(p1, p2) for p1 in points for p2 in points)
     
     # generate the names of states in the probability simplex
