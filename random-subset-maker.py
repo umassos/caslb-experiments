@@ -61,7 +61,7 @@ def experiment(num_region):
     scale = setGB * (carbonPerGB / eastToWest)
 
     # job length (in hours)
-    job_length = 1
+    job_length = 4
 
     # get tau from cmd args
     tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
