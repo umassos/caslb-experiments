@@ -131,7 +131,12 @@ class MetricSpace:
                 to_state = to_region.split(" ")[1]
                 # if the states are different
                 if from_name != to_name:
-                    simplex_distances[simplex_names.index(from_region), simplex_names.index(to_region)] = self.distance(from_name, to_name)
+                    if from_state == "ON" and to_state == "ON":
+                        simplex_distances[simplex_names.index(from_region), simplex_names.index(to_region)] = self.distance(from_name, to_name)
+                    elif from_state == "OFF" and to_state == "OFF":
+                        simplex_distances[simplex_names.index(from_region), simplex_names.index(to_region)] = self.distance(from_name, to_name) + 2*self.tau
+                    else:
+                        simplex_distances[simplex_names.index(from_region), simplex_names.index(to_region)] = self.distance(from_name, to_name) + self.tau
                 # if the names are the same
                 else:
                     simplex_distances[simplex_names.index(from_region), simplex_names.index(to_region)] = self.tau
