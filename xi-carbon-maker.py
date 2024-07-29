@@ -83,7 +83,7 @@ def experiment(xi):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 15
 
     opts = []
     advs = []
@@ -287,6 +287,7 @@ def experiment(xi):
     # cost_baseline2s = np.array(cost_baseline2s)
 
     crPCM = cost_pcms/cost_opts
+    crAdv = cost_advs/cost_opts
     crAgnostic = cost_agnostics/cost_opts
     crConstThreshold = cost_constThresholds/cost_opts
     crGreedy = cost_greedys/cost_opts
@@ -315,6 +316,7 @@ def experiment(xi):
     print("clip2: ", np.mean(crClip2), np.percentile(crClip2, 95))
     print("clip5: ", np.mean(crClip5), np.percentile(crClip5, 95))
     print("clip10: ", np.mean(crClip10), np.percentile(crClip10, 95))
+    print("adv: ", np.mean(crAdv), np.percentile(crAdv, 95))
     # print("baseline2: ", np.mean(crBaseline2), np.percentile(crBaseline2, 95))
     # print("alpha bound: ", alpha)
 
