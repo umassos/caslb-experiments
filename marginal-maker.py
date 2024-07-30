@@ -289,6 +289,6 @@ def experiment(job_length):
 
 if __name__ == "__main__":
     # experiment(12)
-    job_lengths = [2, 4, 6, 8]
+    job_lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     for length in tqdm(job_lengths):
         experiment(length)

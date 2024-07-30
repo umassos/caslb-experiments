@@ -131,7 +131,10 @@ def experiment(GB):
 
         # #################################### get the "bad" solution
         # solve for the advice using perturbed sequence
-        errordSequence = simplexSequence + np.random.uniform(-0.5, 0.5, simplexSequence.shape)*simplexSequence
+        randomNoise = np.random.uniform(Lc/job_length, Uc/job_length, simplexSequence.shape)
+            # wherever simplexSequence is 0, set randomNoise to 0 (OFF states)
+            randomNoise[simplexSequence == 0] = 0
+            errordSequence = (0.6)*simplexSequence + (0.4)*randomNoise
         # print(simplexSequence)
         # print(errordSequence)
         adv, adv_gamma_ots, advCost = f.optimalSolution(errordSequence, simplex_distances, scale, c_simplex, dim, start_simplex, alt_cost_functions=simplexSequence)
