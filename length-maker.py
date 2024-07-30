@@ -82,7 +82,7 @@ def experiment(job_length):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 150
+    epochs = 1500
 
     opts = []
     pcms = []
@@ -146,9 +146,11 @@ def experiment(job_length):
 
             # #################################### get the "bad" solution
             # solve for the advice using perturbed sequence
-            errordSequence = simplexSequence + np.random.uniform(-0.5, 0.5, simplexSequence.shape)*simplexSequence
-            # randomNoise = np.random.uniform(Lc/job_length, Uc/job_length, simplexSequence.shape)
-            # errordSequence = (0.6)*simplexSequence + (0.4)*randomNoise
+            # errordSequence = simplexSequence + np.random.uniform(-0.5, 0.5, simplexSequence.shape)*simplexSequence
+            randomNoise = np.random.uniform(Lc/job_length, Uc/job_length, simplexSequence.shape)
+            # wherever simplexSequence is 0, set randomNoise to 0
+            randomNoise[simplexSequence == 0] = 0
+            errordSequence = (0.6)*simplexSequence + (0.4)*randomNoise
             # print(simplexSequence)
             # print(errordSequence) (simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state):
             adv, adv_gamma_ots, advCost = f.optimalSolution(errordSequence, simplex_distances, tau*scale, scale, c_simplex, dim, start_simplex, alt_cost_functions=simplexSequence)
@@ -258,12 +260,12 @@ def experiment(job_length):
 
 
 # use multiprocessing here
-# if __name__ == "__main__":
-#     lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-#     with Pool(10) as p:
-#         p.map(experiment, lengths)
-
 if __name__ == "__main__":
-    lengths = [1, 3, 5, 7, 9]
-    for length in tqdm(lengths):
-        experiment(length)
+    lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    with Pool(10) as p:
+        p.map(experiment, lengths)
+
+# if __name__ == "__main__":
+#     lengths = [1, 3, 5, 7, 9]
+#     for length in tqdm(lengths):
+#         experiment(length)
