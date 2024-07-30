@@ -82,7 +82,7 @@ def experiment(job_length):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 150
 
     opts = []
     pcms = []
@@ -109,7 +109,8 @@ def experiment(job_length):
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
-        T = np.random.randint(max(12, job_length*2), 48)
+        #T = np.random.randint(max(12, job_length*2), 48)
+        T = np.random.randint(12, 48)
 
         # randomly choose an index from datetimes, and make sure there are at least T days including/after that index
         index = np.random.randint(0, len(datetimes) - T)
@@ -146,6 +147,8 @@ def experiment(job_length):
             # #################################### get the "bad" solution
             # solve for the advice using perturbed sequence
             errordSequence = simplexSequence + np.random.uniform(-0.5, 0.5, simplexSequence.shape)*simplexSequence
+            # randomNoise = np.random.uniform(Lc/job_length, Uc/job_length, simplexSequence.shape)
+            # errordSequence = (0.6)*simplexSequence + (0.4)*randomNoise
             # print(simplexSequence)
             # print(errordSequence) (simplex_cost_functions, dist_matrix, tau, scale, c_simplex, d, start_state):
             adv, adv_gamma_ots, advCost = f.optimalSolution(errordSequence, simplex_distances, tau*scale, scale, c_simplex, dim, start_simplex, alt_cost_functions=simplexSequence)
@@ -235,8 +238,8 @@ def experiment(job_length):
                "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_greedys": cost_greedys, "cost_delayGreedys": cost_delayGreedys, "cost_clip0s": cost_clip0s, "cost_clip2s": cost_clip2s}
     # results = {"opts": opts, "pcms": pcms, "lazys": lazys, "agnostics": agnostics, "constThresholds": constThresholds, "minimizers": minimizers, "clip2s": clip2s, "baseline2s": baseline2s,
     #             "cost_opts": cost_opts, "cost_pcms": cost_pcms, "cost_lazys": cost_lazys, "cost_agnostics": cost_agnostics, "cost_constThresholds": cost_constThresholds, "cost_minimizers": cost_minimizers, "cost_clip2s": cost_clip2s, "cost_baseline2s": cost_baseline2s}
-    with open("length/length_results{}.pickle".format(job_length), "wb") as f:
-        pickle.dump(results, f)
+    # with open("length/length_results{}.pickle".format(job_length), "wb") as f:
+    #     pickle.dump(results, f)
 
 
     # print mean and 95th percentile of each competitive ratio
@@ -255,12 +258,12 @@ def experiment(job_length):
 
 
 # use multiprocessing here
-if __name__ == "__main__":
-    lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    with Pool(10) as p:
-        p.map(experiment, lengths)
-
 # if __name__ == "__main__":
-#     gbs = [1, 3, 5, 7, 9]
-#     for gb in tqdm(gbs):
-#         experiment(gb)
+#     lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+#     with Pool(10) as p:
+#         p.map(experiment, lengths)
+
+if __name__ == "__main__":
+    lengths = [1, 3, 5, 7, 9]
+    for length in tqdm(lengths):
+        experiment(length)

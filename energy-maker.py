@@ -44,7 +44,7 @@ def experiment(energy_factor):
     eastToWest = 221.0427046263345 # milliseconds
     dist = eastToWest
     minutesPerGB = 1.72118 
-    carbonPerGB = (minutesPerGB / 60) * 365
+    carbonPerGB = (minutesPerGB / 60) * 420
     scale = setGB * (carbonPerGB / eastToWest) * energy_factor
 
     # job length (in hours)
