@@ -282,13 +282,13 @@ def experiment(job_length):
 
 
 # use multiprocessing here
-# if __name__ == "__main__":
-#     lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-#     with Pool(10) as p:
-#         p.map(experiment, lengths)
-
 if __name__ == "__main__":
-    # experiment(12)
-    job_lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    for length in tqdm(job_lengths):
-        experiment(length)
+    lengths = [3, 5, 7, 9, 10]
+    with Pool(10) as p:
+        p.map(experiment, lengths)
+
+# if __name__ == "__main__":
+#     # experiment(12)
+#     job_lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+#     for length in tqdm(job_lengths):
+#         experiment(length)
