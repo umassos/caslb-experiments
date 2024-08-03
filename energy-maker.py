@@ -32,7 +32,7 @@ def experiment(energy_factor):
     import implementations as f
     import clipper as c
     if energy_factor == 0.8:
-        energy_factor = 0.75
+        energy_factor = 0.85
     #################################### set up experiment parameters
 
     # get the parameters from the command line
