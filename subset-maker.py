@@ -18,6 +18,7 @@ from tqdm import tqdm
 import warnings
 import metric
 import carbonTraces
+import loadTraces
 
 warnings.filterwarnings("ignore")
 
