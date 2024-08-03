@@ -149,13 +149,13 @@ def objectiveFunctionDiscrete(vars, vals, dist_matrix, dim, start_state, tau, si
 # solve for gamma using scipy or whatever
 def gamma_function(gamma, U, L, D, tau, alpha):
     log = gamma * np.log( (U-L-D-(2*tau)) / ( U-(U/gamma)-D ) )
-    lhs = ((U-L)/L)*log + gamma + 1 - ( (U-(2*tau*gamma)) / L)
+    lhs = ((U-L+D)/L)*log + gamma + 1 - (U / L)
     rhs = alpha
     return lhs - rhs
 
 def solve_gamma(alpha, U, L, D, tau):
     guess = 1 / (1 - (2*D/U) + lambertw( ( ( (2*D/U) + (L/U) - 1 ) * math.exp(2*D/U) ) / math.e ) )
-    result = newton(gamma_function, guess, args=(U, L, D, tau, alpha))
+    result = newton(gamma_function, U/L, args=(U, L, D, tau, alpha))
     return result
 
 
