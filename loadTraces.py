@@ -29,3 +29,6 @@ def randomJobLength(down, up):
     # sample a random job length
     choice = np.random.choice(normLengths)
     return int(choice)
+
+def returnTraceLengths():
+    return traceLengths
