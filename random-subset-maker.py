@@ -18,6 +18,7 @@ from tqdm import tqdm
 import warnings
 import metric
 import carbonTraces
+import loadTraces
 
 warnings.filterwarnings("ignore")
 
@@ -92,6 +93,12 @@ def experiment(num_region):
     for _ in range(epochs):
         # generate random metric
         subset_names = random.sample(originalNames, num_region)
+
+        #### get a random job length from the cloud traces
+        job_length = loadTraces.randomJobLength(1, 10)
+
+        # get tau from cmd args
+        tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
         
         # load in metric space
         m = metric.MetricSpace(tau, names=subset_names)

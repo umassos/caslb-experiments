@@ -282,7 +282,7 @@ if __name__ == "__main__":
     # crossingsSubset = ["us-east-1", "us-west-2",  "af-south-1",  "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1" ]
     # crossings2Subset = [ "us-east-1", "us-west-1", "us-west-2", "af-south-1", "ap-south-2", "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "il-central-1"]
     noHydroSubset = ["us-east-1", "us-west-1", "us-west-2",  "af-south-1", "ap-south-2",  "ap-northeast-2", "ap-southeast-2", "eu-central-1", "eu-west-2", "eu-west-3", "sa-east-1", "il-central-1" ]
-    
+
     candidateSubset = ['af-south-1', 'us-east-1', 'us-west-2', 'us-west-1', 'ap-northeast-2', 'eu-west-3'] # twice!
     candidate2Subset = ['sa-east-1', 'eu-west-3', 'us-west-2', 'ap-south-2', 'ap-southeast-2'] # three times good margin
     candidate3Subset = ['us-west-1', 'ap-northeast-2', 'eu-central-1', 'ap-south-2', 'il-central-1', 'eu-north-1', 'af-south-1'] # twice!
