@@ -45,7 +45,7 @@ def experiment(energy_factor):
     eastToWest = 221.0427046263345 # milliseconds
     dist = eastToWest
     minutesPerGB = 1.72118 
-    carbonPerGB = (minutesPerGB / 60) * 420
+    carbonPerGB = (minutesPerGB / 60) * 365
     scale = setGB * (carbonPerGB / eastToWest) * energy_factor
 
     # job length (in hours)
@@ -82,7 +82,7 @@ def experiment(energy_factor):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 1500
+    epochs = 150
 
     opts = []
     advs = []
