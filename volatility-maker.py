@@ -109,7 +109,7 @@ def experiment(times):
 
     for _ in range(epochs):
         #### get a random job length from the cloud traces
-        job_length = loadTraces.randomJobLength(1, 10)
+        job_length = loadTraces.randomJobLength(2, 10)
 
         # get tau from cmd args
         tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale

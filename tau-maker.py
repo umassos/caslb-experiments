@@ -107,7 +107,7 @@ def experiment(tau_set):
 
     for _ in range(epochs):
         #### get a random job length from the cloud traces
-        job_length = loadTraces.randomJobLength(1, 10)
+        job_length = loadTraces.randomJobLength(2, 10)
 
         # get tau from cmd args
         tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
@@ -121,7 +121,7 @@ def experiment(tau_set):
         # scale the c_vector and c_simplex by the job length
         c_vector = c_vector / job_length
         c_simplex = c_simplex / job_length
-        
+
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
