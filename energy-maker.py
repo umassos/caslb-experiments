@@ -31,6 +31,8 @@ style.use('tableau-colorblind10')
 def experiment(energy_factor):
     import implementations as f
     import clipper as c
+    if energy_factor == 0.8:
+        energy_factor = 0.75
     #################################### set up experiment parameters
 
     # get the parameters from the command line
@@ -82,7 +84,7 @@ def experiment(energy_factor):
     c_simplex = c_simplex / job_length
 
     # specify the number of instances to generate
-    epochs = 150
+    epochs = 1500
 
     opts = []
     advs = []
@@ -109,7 +111,7 @@ def experiment(energy_factor):
 
     for _ in range(epochs):
         #### get a random job length from the cloud traces
-        job_length = loadTraces.randomJobLength(1, 10)
+        job_length = loadTraces.randomJobLength(2, 10)
 
         # get tau from cmd args
         tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
