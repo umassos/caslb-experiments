@@ -284,7 +284,8 @@ def experiment(energy_factor):
 
 # use multiprocessing here
 if __name__ == "__main__":
-    energy_factors = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    # energy_factors = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    energy_factors = [0.85]
     with Pool(10) as p:
         p.map(experiment, energy_factors)
 
