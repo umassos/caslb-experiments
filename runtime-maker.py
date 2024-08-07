@@ -19,6 +19,7 @@ import warnings
 import metric
 import time
 import carbonTraces
+import loadTraces
 
 warnings.filterwarnings("ignore")
 
@@ -107,6 +108,22 @@ def experiment(deadline):
     # eta = 1 / ( (U-D)/U + lambertw( ( (U-L-D+(2*tau)) * math.exp(D-U/U) )/U ) )
 
     for _ in range(epochs):
+        #### get a random job length from the cloud traces
+        job_length = loadTraces.randomJobLength(2, 10)
+
+        # get tau from cmd args
+        tau = (1/scale) * (1/job_length) #float(sys.argv[2]) / scale
+
+        # get the distance matrix
+        simplex_names, c_simplex, simplex_distances = m.generate_simplex_distances()
+
+        # get the weight vector, the c vector, the name vector, and phi inverse
+        c_vector, name_vector = m.get_unit_c_vector()
+
+        # scale the c_vector and c_simplex by the job length
+        c_vector = c_vector / job_length
+        c_simplex = c_simplex / job_length
+        
         #################################### generate cost functions (a sequence)
 
         # randomly generate $T$ for the instance (the integer deadline)
@@ -262,7 +279,7 @@ def experiment(deadline):
 
     # print mean and 95th percentile of each competitive ratio
     print("Diameter: {}".format(D))
-    print("Simulated Job Length: {}".format(job_length))
+    print("Simulated Deadline: {}".format(deadline))
     print("PCM: ", np.mean(crPCM), np.percentile(crPCM, 95))
     print("agnostic: ", np.mean(crAgnostic), np.percentile(crAgnostic, 95))
     print("simple threshold: ", np.mean(crConstThreshold), np.percentile(crConstThreshold, 95))
