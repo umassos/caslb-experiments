@@ -149,7 +149,7 @@ def objectiveFunctionDiscrete(vars, vals, dist_matrix, dim, start_state, tau, si
 # solve for gamma using scipy or whatever
 def gamma_function(gamma, U, L, D, tau, alpha):
     log = gamma * np.log( (U-L-D-(2*tau)) / ( U-(U/gamma)-D ) )
-    lhs = ((U-L+D)/L)*log + gamma + 1 - (U / L)
+    lhs = ((U-L)/L)*log + gamma + 1 - ( (U-(2*tau*gamma)) / L)
     rhs = alpha
     return lhs - rhs
 
